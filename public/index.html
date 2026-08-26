@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Panel de avisos institucionales del ITTG">
+  <title>Panel de avisos | ITTG</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-top">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">ITTG</div>
+        <div>
+          <p class="eyebrow">Difusión institucional</p>
+          <h1>Panel de avisos</h1>
+          <p class="brand-subtitle">Resumen visual para coordinadores</p>
+        </div>
+      </div>
+      <div class="user-info">
+        <p id="coordinator" class="subtitle">Coordinador: pendiente de autenticación</p>
+        <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+    <nav class="top-nav" aria-label="Navegación principal">
+      <a class="active" href="index.html">Inicio</a>
+      <a href="#resumen">Resumen</a>
+      <a href="#distribucion">Distribución</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="status" class="message" role="status" hidden></div>
+
+    <section class="hero" id="resumen">
+      <div class="hero-card">
+        <p class="eyebrow">Vista general</p>
+        <h2>El alcance de tus avisos, de un vistazo</h2>
+        <p>Consulta destinatarios, lecturas y distribución académica desde un solo lugar.</p>
+        <button id="refreshButton" class="primary-button" type="button">Actualizar datos</button>
+      </div>
+      <div class="hero-stats" aria-label="Métricas principales">
+        <div class="hero-stat"><strong id="totalNotices">--</strong><span>Avisos enviados</span></div>
+        <div class="hero-stat"><strong id="totalStudents">--</strong><span>Estudiantes registrados</span></div>
+        <div class="hero-stat"><strong id="readRate">--</strong><span>Lecturas confirmadas</span></div>
+      </div>
+    </section>
+
+    <section class="panel panel-grid" id="distribucion">
+      <article class="card">
+        <h3>Lecturas confirmadas</h3>
+        <div class="metric-card">
+          <span>Confirmaciones vs destinatarios</span>
+          <div class="metric-value" id="readCount">-- / --</div>
+        </div>
+        <div class="chart-wrap"><canvas id="readRateChart" aria-label="Lecturas confirmadas y pendientes"></canvas></div>
+      </article>
+      <article class="card">
+        <h3>Avisos por segmento</h3>
+        <div class="chart-wrap"><canvas id="segmentChart" aria-label="Avisos por tipo de segmento"></canvas></div>
+        <p class="empty-state" id="segmentEmpty">Sin datos de segmentos.</p>
+      </article>
+    </section>
+
+    <section class="panel panel-grid">
+      <article class="card">
+        <h3>Estudiantes por carrera</h3>
+        <div class="chart-wrap"><canvas id="careerChart" aria-label="Estudiantes por carrera"></canvas></div>
+        <p class="empty-state" id="careerEmpty">Sin datos de carreras.</p>
+      </article>
+      <article class="card">
+        <h3>Top 5 avisos con mayor alcance</h3>
+        <ul class="top-list" id="topNotices"><li><strong>Sin avisos registrados</strong><span>Aún no hay información para mostrar.</span></li></ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
