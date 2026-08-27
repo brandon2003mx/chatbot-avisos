@@ -1,0 +1,7 @@
+bindLogout('logoutButton', '/auth/student/logout', 'student_login.html');
+const messages = document.getElementById('chatMessages');
+function addMessage(text, role = 'assistant') { const item = document.createElement('div'); item.className = `chat-message ${role}`; item.textContent = text; messages.appendChild(item); messages.scrollTop = messages.scrollHeight; }
+async function sendCommand(command, input = '') { addMessage(input || command, 'user'); try { const payload = await apiRequest('/student/bot', { method: 'POST', body: JSON.stringify({ action: command, input }) }); addMessage(payload.message || formatBotResponse(payload)); } catch (error) { addMessage(error.message); } }
+function formatBotResponse(payload) { if (payload.data?.length) return payload.data.map(item => item.titulo || item.title || JSON.stringify(item)).join('\n'); if (payload.stats) return `Total: ${payload.stats.total_count || 0}. Leídos: ${payload.stats.read_count || 0}. Pendientes: ${payload.stats.pending_count || 0}.`; return 'Solicitud procesada.'; }
+document.querySelectorAll('[data-command]').forEach(button => button.addEventListener('click', () => sendCommand(button.dataset.command)));
+document.getElementById('chatForm').addEventListener('submit', event => { event.preventDefault(); const input = document.getElementById('chatText'); if (!input.value.trim()) return; sendCommand('message', input.value.trim()); input.value = ''; });
