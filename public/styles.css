@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
+.auth-card form label { display: block; }
+.auth-card form input,
+.auth-card form select { display: block; width: 100%; }
+
 :root { --ink: #102a43; --muted: #526579; --paper: #eff6ff; --surface: #ffffff; --blue: #1d4ed8; --teal: #0e7490; --line: #d7e3f1; --shadow: 0 18px 45px rgba(30, 64, 175, .10); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
