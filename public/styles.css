@@ -4,6 +4,11 @@
 .auth-card form input,
 .auth-card form select { display: block; width: 100%; }
 
+#registrationFields:not([hidden]) { display: contents; }
+#registrationFields:not([hidden]) > label[for="confirmPassword"],
+#registrationFields:not([hidden]) > #confirmPassword { order: 1; }
+#registrationFields:not([hidden]) ~ #submitButton { order: 2; }
+
 :root { --ink: #102a43; --muted: #526579; --paper: #eff6ff; --surface: #ffffff; --blue: #1d4ed8; --teal: #0e7490; --line: #d7e3f1; --shadow: 0 18px 45px rgba(30, 64, 175, .10); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
