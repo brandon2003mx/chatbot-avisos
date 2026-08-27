@@ -60,8 +60,32 @@ async function obtenerGrupos(carreraId, semestreId) {
   }));
 }
 
+/**
+ * Obtiene una carrera por su ID.
+ *
+ * @param {string} carreraId ID de la carrera.
+ * @return {Promise<Object|null>}
+ */
+async function obtenerCarrera(carreraId) {
+  const documento = await db
+      .collection("carreras")
+      .doc(carreraId)
+      .get();
+
+  if (!documento.exists) {
+    return null;
+  }
+
+  return {
+    id: documento.id,
+    ...documento.data(),
+  };
+}
+
 module.exports = {
   obtenerCarreras,
+  obtenerCarrera,
   obtenerSemestres,
   obtenerGrupos,
 };
+
