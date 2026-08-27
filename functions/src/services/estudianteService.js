@@ -48,25 +48,46 @@ async function guardarEstudiante(
 }
 
 /**
- * Busca estudiantes activos por carrera, semestre y grupo.
+ * Busca estudiantes activos según una segmentación.
  *
+ * @param {string} tipoSegmentacion Tipo de segmentación.
  * @param {string} carreraId ID de la carrera.
- * @param {number} semestre Número del semestre.
- * @param {string} grupoId ID del grupo.
+ * @param {number|null} semestre Número del semestre.
+ * @param {string|null} grupoId ID del grupo.
  * @return {Promise<Array>}
  */
-async function buscarEstudiantes(
-    carreraId,
-    semestre,
-    grupoId,
+async function buscarEstudiantesPorSegmentacion(
+    tipoSegmentacion,
+    carreraId = null,
+    semestre = null,
+    grupoId = null,
 ) {
-  const snapshot = await db
+  let consulta = db
       .collection("estudiantes")
-      .where("carreraId", "==", carreraId)
-      .where("semestre", "==", semestre)
-      .where("grupoId", "==", grupoId)
-      .where("activo", "==", true)
-      .get();
+      .where("activo", "==", true);
+
+  if (tipoSegmentacion === "carrera") {
+    consulta = consulta.where(
+        "carreraId",
+        "==",
+        carreraId,
+    );
+  }
+
+  if (tipoSegmentacion === "semestre") {
+    consulta = consulta
+        .where("carreraId", "==", carreraId)
+        .where("semestre", "==", semestre);
+  }
+
+  if (tipoSegmentacion === "grupo") {
+    consulta = consulta
+        .where("carreraId", "==", carreraId)
+        .where("semestre", "==", semestre)
+        .where("grupoId", "==", grupoId);
+  }
+
+  const snapshot = await consulta.get();
 
   return snapshot.docs.map((doc) => ({
     id: doc.id,
@@ -77,5 +98,5 @@ async function buscarEstudiantes(
 module.exports = {
   obtenerEstudiantePorTelegramId,
   guardarEstudiante,
-  buscarEstudiantes,
+  buscarEstudiantesPorSegmentacion,
 };

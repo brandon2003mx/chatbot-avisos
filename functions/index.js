@@ -11,6 +11,10 @@ const {
   procesarActualizacion,
 } = require("./src/services/registro/telegramRegistroService");
 
+const {
+  crearYEnviarAviso,
+} = require("./src/services/avisoService");
+
 setGlobalOptions({
   maxInstances: 10,
 });
@@ -65,6 +69,36 @@ exports.api = onRequest(async (req, res) => {
       });
     }
 
+    if (req.method === "POST" && ruta === "/avisos") {
+      const {
+        titulo,
+        contenido,
+        tipoSegmentacion,
+        carreraId,
+        semestre,
+        grupoId,
+        autorId,
+      } = req.body;
+
+      const resultado = await crearYEnviarAviso({
+        titulo,
+        contenido,
+        tipoSegmentacion,
+        carreraId,
+        semestre:
+          semestre === undefined || semestre === null ?
+            null :
+            Number(semestre),
+        grupoId,
+        autorId,
+      });
+
+      return res.status(201).json({
+        ok: true,
+        ...resultado,
+      });
+    }
+
     return res.status(404).json({
       ok: false,
       mensaje: "Ruta no encontrada",
@@ -108,4 +142,5 @@ exports.telegramWebhook = onRequest(async (req, res) => {
     });
   }
 });
+
 
