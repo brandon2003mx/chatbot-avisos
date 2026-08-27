@@ -7,6 +7,10 @@ const {
   obtenerGrupos,
 } = require("./src/services/carreraService");
 
+const {
+  procesarActualizacion,
+} = require("./src/services/registro/telegramRegistroService");
+
 setGlobalOptions({
   maxInstances: 10,
 });
@@ -15,7 +19,6 @@ exports.api = onRequest(async (req, res) => {
   try {
     const ruta = req.path;
 
-    // GET /api/carreras
     if (req.method === "GET" && ruta === "/carreras") {
       const carreras = await obtenerCarreras();
 
@@ -25,7 +28,6 @@ exports.api = onRequest(async (req, res) => {
       });
     }
 
-    // GET /api/carreras/:carreraId/semestres
     const semestresMatch = ruta.match(
         /^\/carreras\/([^/]+)\/semestres$/,
     );
@@ -42,7 +44,6 @@ exports.api = onRequest(async (req, res) => {
       });
     }
 
-    // GET /api/carreras/:carreraId/semestres/:semestreId/grupos
     const gruposMatch = ruta.match(
         /^\/carreras\/([^/]+)\/semestres\/([^/]+)\/grupos$/,
     );
@@ -51,7 +52,10 @@ exports.api = onRequest(async (req, res) => {
       const carreraId = gruposMatch[1];
       const semestreId = gruposMatch[2];
 
-      const grupos = await obtenerGrupos(carreraId, semestreId);
+      const grupos = await obtenerGrupos(
+          carreraId,
+          semestreId,
+      );
 
       return res.status(200).json({
         ok: true,
@@ -74,3 +78,34 @@ exports.api = onRequest(async (req, res) => {
     });
   }
 });
+
+/**
+ * Recibe las actualizaciones de Telegram.
+ */
+exports.telegramWebhook = onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        mensaje: "Método no permitido",
+      });
+    }
+
+    await procesarActualizacion(req.body);
+
+    return res.status(200).json({
+      ok: true,
+    });
+  } catch (error) {
+    console.error(
+        "Error procesando actualización de Telegram:",
+        error,
+    );
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error procesando actualización",
+    });
+  }
+});
+

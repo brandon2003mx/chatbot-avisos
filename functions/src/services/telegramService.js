@@ -9,6 +9,34 @@ if (!token) {
 const telegramApi = new Api(token);
 
 /**
+ * Envía un mensaje de texto.
+ *
+ * @param {string|number} chatId Identificador del chat.
+ * @param {string} mensaje Mensaje que se enviará.
+ * @param {Object} opciones Opciones adicionales de Telegram.
+ * @return {Promise<Object>}
+ */
+async function enviarMensaje(chatId, mensaje, opciones = {}) {
+  return telegramApi.sendMessage({
+    chat_id: chatId,
+    text: mensaje,
+    ...opciones,
+  });
+}
+
+/**
+ * Responde a una pulsación de botón inline.
+ *
+ * @param {string} callbackQueryId ID de la consulta.
+ * @return {Promise<Object>}
+ */
+async function responderCallback(callbackQueryId) {
+  return telegramApi.answerCallbackQuery({
+    callback_query_id: callbackQueryId,
+  });
+}
+
+/**
  * Obtiene las actualizaciones pendientes de Telegram.
  *
  * @return {Promise<Object>}
@@ -17,21 +45,8 @@ async function getUpdates() {
   return telegramApi.getUpdates({});
 }
 
-/**
- * Envía un mensaje a un chat de Telegram.
- *
- * @param {string|number} chatId
- * @param {string} mensaje
- * @return {Promise<Object>}
- */
-async function enviarMensaje(chatId, mensaje) {
-  return telegramApi.sendMessage({
-    chat_id: chatId,
-    text: mensaje,
-  });
-}
-
 module.exports = {
-  getUpdates,
   enviarMensaje,
+  responderCallback,
+  getUpdates,
 };
