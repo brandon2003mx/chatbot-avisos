@@ -1,6 +1,12 @@
 const {db} = require("../config/firebase");
 
 const {
+  validarCarreraActiva,
+  validarSemestreActivo,
+  validarGrupoActivo,
+} = require("./carreraService");
+
+const {
   buscarEstudiantesPorSegmentacion,
 } = require("./estudianteService");
 
@@ -9,11 +15,11 @@ const {
 } = require("./telegramService");
 
 /**
- * Valida los datos de un aviso.
+ * Valida los datos básicos de un aviso.
  *
  * @param {Object} aviso Datos del aviso.
  */
-function validarAviso(aviso) {
+function validarDatosAviso(aviso) {
   const tiposValidos = [
     "todos",
     "carrera",
@@ -31,7 +37,7 @@ function validarAviso(aviso) {
 
   if (!tiposValidos.includes(aviso.tipoSegmentacion)) {
     throw new Error(
-        "Tipo de segmentación no válido.",
+        "El tipo de segmentación no es válido.",
     );
   }
 
@@ -40,18 +46,18 @@ function validarAviso(aviso) {
     !aviso.carreraId
   ) {
     throw new Error(
-        "carreraId es obligatorio para esta segmentación.",
+        "La carrera es obligatoria para esta segmentación.",
     );
   }
 
   if (
     (aviso.tipoSegmentacion === "semestre" ||
       aviso.tipoSegmentacion === "grupo") &&
-    (aviso.semestre === undefined ||
-      aviso.semestre === null)
+    (aviso.semestre === null ||
+      aviso.semestre === undefined)
   ) {
     throw new Error(
-        "semestre es obligatorio para esta segmentación.",
+        "El semestre es obligatorio para esta segmentación.",
     );
   }
 
@@ -60,7 +66,45 @@ function validarAviso(aviso) {
     !aviso.grupoId
   ) {
     throw new Error(
-        "grupoId es obligatorio para la segmentación por grupo.",
+        "El grupo es obligatorio para esta segmentación.",
+    );
+  }
+}
+
+/**
+ * Valida que la segmentación corresponda
+ * con datos académicos activos.
+ *
+ * @param {Object} aviso Datos del aviso.
+ * @return {Promise<void>}
+ */
+async function validarSegmentacion(aviso) {
+  if (aviso.tipoSegmentacion === "todos") {
+    return;
+  }
+
+  if (aviso.tipoSegmentacion === "carrera") {
+    await validarCarreraActiva(
+        aviso.carreraId,
+    );
+
+    return;
+  }
+
+  if (aviso.tipoSegmentacion === "semestre") {
+    await validarSemestreActivo(
+        aviso.carreraId,
+        String(aviso.semestre),
+    );
+
+    return;
+  }
+
+  if (aviso.tipoSegmentacion === "grupo") {
+    await validarGrupoActivo(
+        aviso.carreraId,
+        String(aviso.semestre),
+        aviso.grupoId,
     );
   }
 }
@@ -72,7 +116,8 @@ function validarAviso(aviso) {
  * @return {Promise<string>} ID del aviso.
  */
 async function crearAviso(aviso) {
-  validarAviso(aviso);
+  validarDatosAviso(aviso);
+  await validarSegmentacion(aviso);
 
   const referencia = await db
       .collection("avisos")
@@ -81,9 +126,11 @@ async function crearAviso(aviso) {
         contenido: aviso.contenido.trim(),
         tipoSegmentacion: aviso.tipoSegmentacion,
         carreraId: aviso.carreraId || null,
-        semestre: aviso.semestre === undefined ?
-          null :
-          aviso.semestre,
+        semestre:
+          aviso.semestre === undefined ||
+          aviso.semestre === null ?
+            null :
+            Number(aviso.semestre),
         grupoId: aviso.grupoId || null,
         autorId: aviso.autorId || null,
         activo: true,
@@ -95,7 +142,7 @@ async function crearAviso(aviso) {
 }
 
 /**
- * Obtiene los estudiantes destinatarios de un aviso.
+ * Obtiene los estudiantes destinatarios.
  *
  * @param {Object} aviso Datos del aviso.
  * @return {Promise<Array>}
@@ -152,24 +199,36 @@ async function enviarAvisoTelegram(
   }
 
   return {
+    total: estudiantes.length,
     enviados,
     errores,
-    total: estudiantes.length,
   };
 }
 
 /**
- * Crea un aviso y lo envía por Telegram.
+ * Crea y envía un aviso.
+ *
+ * El aviso solo se crea si existe al menos
+ * un estudiante destinatario.
  *
  * @param {Object} aviso Datos del aviso.
  * @return {Promise<Object>}
  */
 async function crearYEnviarAviso(aviso) {
-  const avisoId = await crearAviso(aviso);
+  validarDatosAviso(aviso);
+  await validarSegmentacion(aviso);
 
   const destinatarios = await obtenerDestinatarios(
       aviso,
   );
+
+  if (destinatarios.length === 0) {
+    throw new Error(
+        "No existen estudiantes destinatarios para esta segmentación.",
+    );
+  }
+
+  const avisoId = await crearAviso(aviso);
 
   const resultado = await enviarAvisoTelegram(
       aviso,
@@ -180,6 +239,9 @@ async function crearYEnviarAviso(aviso) {
       .collection("avisos")
       .doc(avisoId)
       .update({
+        destinatarios: resultado.total,
+        enviados: resultado.enviados,
+        errores: resultado.errores,
         fechaActualizacion: new Date(),
       });
 
@@ -191,10 +253,29 @@ async function crearYEnviarAviso(aviso) {
   };
 }
 
+/**
+ * Obtiene los avisos más recientes.
+ *
+ * @param {number} limite Número máximo de avisos.
+ * @return {Promise<Array>}
+ */
+async function obtenerAvisos(limite = 50) {
+  const snapshot = await db
+      .collection("avisos")
+      .orderBy("fechaCreacion", "desc")
+      .limit(limite)
+      .get();
+
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+}
+
 module.exports = {
   crearAviso,
   obtenerDestinatarios,
   enviarAvisoTelegram,
   crearYEnviarAviso,
+  obtenerAvisos,
 };
-
