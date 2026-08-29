@@ -54,10 +54,9 @@ function populateSelect(id, values) {
 
 function selectNoticeValue(id, value) {
   const select = document.getElementById(id);
-  if (value && !Array.from(select.options).some((option) => option.value === value)) {
-    select.add(new Option(value, value));
-  }
-  select.value = value === 'General' ? '' : value;
+  const selectedValue = value === 'General' ? '' : String(value).split(',')[0].trim();
+  const optionIndex = Array.from(select.options).findIndex((option) => option.value === selectedValue);
+  select.selectedIndex = optionIndex >= 0 ? optionIndex : 0;
 }
 
 function renderNotices(notices) {
