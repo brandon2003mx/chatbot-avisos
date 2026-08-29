@@ -34,7 +34,7 @@ setGlobalOptions({
 
 exports.api = onRequest(async (req, res) => {
   try {
-    const ruta = req.path;
+    const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
 
     if (req.method === "GET" && ruta === "/carreras") {
       const carreras = await obtenerCarreras();

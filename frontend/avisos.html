@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Avisos | ITTG</title>
+  <link rel="icon" href="descarga.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
+  <script src="firebase-init.js" defer></script>
+  <script src="auth.js" defer></script>
+  <script src="avisos.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-top">
+      <div class="brand">
+        <img class="brand-logo" src="descarga.png" alt="Logotipo institucional">
+        <div>
+          <p class="eyebrow">Difusión institucional</p>
+          <h1>Avisos</h1>
+          <p class="brand-subtitle">Redacta y envía avisos segmentados</p>
+        </div>
+      </div>
+      <div class="user-info">
+        <p id="coordinator" class="subtitle">Coordinador: pendiente de autenticación</p>
+        <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+    <nav class="top-nav" aria-label="Navegación principal">
+      <a href="index.html">Inicio</a>
+      <a class="active" href="avisos.html">Avisos</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="status" class="message" role="status" hidden></div>
+
+    <section class="panel">
+      <h2>Redactar aviso</h2>
+      <form id="avisoForm" class="form-grid">
+        <div>
+          <label for="titulo">Título del aviso</label>
+          <input id="titulo" name="titulo" type="text" placeholder="Ej. Suspensión de clases" required>
+        </div>
+        <div>
+          <label for="contenido">Mensaje</label>
+          <textarea id="contenido" name="contenido" placeholder="Describe el aviso institucional" required></textarea>
+        </div>
+        <div>
+          <label for="tipoSegmentacion">Dirigido a</label>
+          <select id="tipoSegmentacion" name="tipoSegmentacion" required>
+            <option value="todos">Todos los estudiantes</option>
+            <option value="carrera">Una carrera</option>
+            <option value="semestre">Un semestre</option>
+            <option value="grupo">Un grupo</option>
+          </select>
+        </div>
+        <div id="carreraField" hidden>
+          <label for="carrera">Carrera</label>
+          <select id="carrera" name="carrera">
+            <option value="">Selecciona una carrera</option>
+          </select>
+        </div>
+        <div id="semestreField" hidden>
+          <label for="semestre">Semestre</label>
+          <select id="semestre" name="semestre">
+            <option value="">Selecciona un semestre</option>
+          </select>
+        </div>
+        <div id="grupoField" hidden>
+          <label for="grupo">Grupo</label>
+          <select id="grupo" name="grupo">
+            <option value="">Selecciona un grupo</option>
+          </select>
+        </div>
+        <div class="form-action">
+          <button class="primary-button" type="submit">Enviar aviso</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Avisos enviados</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Dirigido a</th>
+              <th>Destinatarios</th>
+              <th>Enviados</th>
+              <th>Errores</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="avisosTable">
+            <tr><td colspan="6">Cargando avisos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

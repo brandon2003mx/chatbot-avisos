@@ -1,9 +1,15 @@
 const API_URL = window.APP_CONFIG?.apiUrl || '/api';
 
+const SEGMENTO_LABELS = { todos: 'Todos', carrera: 'Carrera', semestre: 'Semestre', grupo: 'Grupo' };
+
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, { headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, ...options });
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (firebase.auth().currentUser) {
+    headers.Authorization = `Bearer ${await firebase.auth().currentUser.getIdToken()}`;
+  }
+  const response = await fetch(`${API_URL}${path}`, { headers, ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.ok === false) throw new Error(payload.error || 'No fue posible completar la solicitud.');
+  if (!response.ok || payload.ok === false) throw new Error(payload.mensaje || payload.error || 'No fue posible completar la solicitud.');
   return payload;
 }
 
@@ -15,17 +21,11 @@ function showMessage(message, type = 'error') {
   element.hidden = false;
 }
 
-function bindLogout(buttonId, endpoint, redirect) {
+function bindLogout(buttonId, redirect) {
   document.getElementById(buttonId)?.addEventListener('click', async () => {
-    try { await apiRequest(endpoint, { method: 'POST' }); } catch (error) { console.info('Sesión local cerrada:', error.message); }
+    try { await firebase.auth().signOut(); } catch (error) { console.info('Error al cerrar sesión:', error.message); }
     window.location.href = redirect;
   });
-}
-
-function populateSelect(id, values) {
-  const select = document.getElementById(id);
-  if (!select) return;
-  values.forEach(value => select.add(new Option(value, value)));
 }
 
 function escapeHtml(value) {
