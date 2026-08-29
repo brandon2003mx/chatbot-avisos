@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redactar Aviso | ITTG</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="auth.js" defer></script>
+  <script src="notice_form.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-top">
+      <div class="brand">
+        <img class="brand-logo" src="descarga.png" alt="Logotipo institucional">
+        <div>
+          <p class="eyebrow">Difusión institucional</p>
+          <h1>Redactar aviso</h1>
+          <p class="brand-subtitle">Crea mensajes para tu comunidad estudiantil</p>
+        </div>
+      </div>
+      <div class="user-info">
+        <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+    <nav class="top-nav" aria-label="Navegación principal">
+      <a href="index.html">Inicio</a>
+      <a class="active" href="notice_form.html">Redactar Aviso</a>
+      <a href="students.html">Estudiantes</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="status" class="message" role="status" hidden></div>
+
+    <section class="panel notice-board">
+      <div class="card">
+        <h2>Nuevo aviso</h2>
+
+        <form id="noticeForm" class="notice-form form-grid">
+          <div class="field-full">
+            <label for="title">Título del aviso</label>
+            <input id="title" name="title" type="text" placeholder="Ej. Inscripciones abiertas" required>
+          </div>
+
+          <div>
+            <label for="prioridad">Prioridad</label>
+            <select id="prioridad" name="prioridad">
+              <option value="Media">Media</option>
+              <option value="Alta">Alta</option>
+              <option value="Baja">Baja</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="carrera">Carrera</label>
+            <select id="carrera" name="carrera">
+              <option value="">Todas las carreras</option>
+              <option value="Ingeniería en Sistemas Computacionales">Ingeniería en Sistemas Computacionales</option>
+              <option value="Ingeniería Industrial">Ingeniería Industrial</option>
+              <option value="Ingeniería Electrónica">Ingeniería Electrónica</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="semestre">Semestre</label>
+            <select id="semestre" name="semestre">
+              <option value="">Todos</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="grupo">Grupo</label>
+            <select id="grupo" name="grupo">
+              <option value="">Todos</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </div>
+
+          <div class="field-full">
+            <label for="content">Mensaje</label>
+            <textarea id="content" name="content" placeholder="Escribe el contenido del aviso..." required></textarea>
+          </div>
+
+          <div class="field-full form-actions">
+            <button class="primary-button" type="submit">Enviar aviso</button>
+            <button id="saveDraftButton" class="button-link" type="button">Guardar borrador</button>
+            <a class="button-link" href="index.html">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

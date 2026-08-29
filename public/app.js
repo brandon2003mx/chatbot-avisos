@@ -82,6 +82,14 @@ async function loadDashboard() {
   }
 }
 
-document.getElementById('refreshButton').addEventListener('click', loadDashboard);
+const refreshButton = document.getElementById('refreshButton');
+if (refreshButton) refreshButton.addEventListener('click', loadDashboard);
+
+const composeButton = document.getElementById('composeNoticeButton');
+if (composeButton) composeButton.addEventListener('click', () => { window.location.href = 'notice_form.html'; });
+
+const studentsButton = document.getElementById('studentsButton');
+if (studentsButton) studentsButton.addEventListener('click', () => { window.location.href = 'students.html'; });
+
 document.getElementById('logoutButton').addEventListener('click', () => { window.location.href = '/login.html'; });
 loadDashboard();

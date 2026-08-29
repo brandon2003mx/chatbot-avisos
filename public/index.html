@@ -27,8 +27,8 @@
     </div>
     <nav class="top-nav" aria-label="Navegación principal">
       <a class="active" href="index.html">Inicio</a>
-      <a href="#resumen">Resumen</a>
-      <a href="#distribucion">Distribución</a>
+      <a href="notice_form.html">Redactar Aviso</a>
+      <a href="students.html">Estudiantes</a>
     </nav>
   </header>
 
@@ -40,7 +40,11 @@
         <p class="eyebrow">Vista general</p>
         <h2>El alcance de tus avisos, de un vistazo</h2>
         <p>Consulta destinatarios, lecturas y distribución académica desde un solo lugar.</p>
-        <button id="refreshButton" class="primary-button" type="button">Actualizar datos</button>
+        <div class="hero-actions">
+          <button id="refreshButton" class="primary-button" type="button">Actualizar datos</button>
+          <button id="composeNoticeButton" class="button-outline dark" type="button">Redactar Aviso</button>
+          <button id="studentsButton" class="button-outline dark" type="button">Estudiantes</button>
+        </div>
       </div>
       <div class="hero-stats" aria-label="Métricas principales">
         <div class="hero-stat"><strong id="totalNotices">--</strong><span>Avisos enviados</span></div>
