@@ -5,6 +5,10 @@ const {db} = require("./src/config/firebase");
 const {getUpdates, enviarAvisoAEstudiantes} = require("./src/services/telegramService");
 const { FieldValue } = require("firebase-admin/firestore");
 
+if (process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+}
+
 setGlobalOptions({
   maxInstances: 10,
 });
@@ -76,6 +80,11 @@ async function handleDashboard(req, res) {
     // Obtiene estadísticas básicas
     const estudiantesSnapshot = await db.collection("estudiantes").get();
     const avisosSnapshot = await db.collection("avisos").get();
+    const readsSnapshot = await db.collectionGroup("lecturas").get();
+    const totalRecipients = readsSnapshot.size;
+    const totalReads = readsSnapshot.docs.filter((doc) =>
+      doc.data().status === "read"
+    ).length;
 
     return res.status(200).json({
       ok: true,
@@ -83,8 +92,8 @@ async function handleDashboard(req, res) {
         metrics: {
           total_notices: avisosSnapshot.size,
           total_students: estudiantesSnapshot.size,
-          total_recipients: 0,
-          total_reads: 0,
+          total_recipients: totalRecipients,
+          total_reads: totalReads,
         },
         topNotices: avisos,
         ...academicData,
@@ -142,7 +151,7 @@ async function handleCreateNotice(req, res) {
 
     let deliveredTo = 0;
     try {
-      deliveredTo = await enviarAvisoAEstudiantes(noticeData);
+      deliveredTo = await enviarAvisoAEstudiantes(noticeData, docRef.id);
     } catch (deliveryError) {
       console.error("No fue posible enviar el aviso por Telegram:", deliveryError);
     }

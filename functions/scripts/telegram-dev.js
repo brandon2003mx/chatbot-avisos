@@ -38,6 +38,24 @@ bot.command("start", async (ctx) => {
   await ctx.reply("Bienvenido al bot de avisos ITTG. Selecciona Registrarme para recibir avisos.", {reply_markup: keyboard});
 });
 
+bot.on("callback_query", async (ctx) => {
+  const callback = ctx.callbackQuery;
+  const data = callback?.data || "";
+  const chatId = callback?.message?.chat?.id;
+  const noticeId = data.startsWith("read:") ? data.slice(5) : "";
+
+  if (!chatId || !noticeId) return;
+
+  await db.collection("avisos").doc(noticeId).collection("lecturas")
+      .doc(String(chatId)).set({
+        chatId,
+        status: "read",
+        readAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+  await ctx.answerCallbackQuery({text: "Lectura confirmada."});
+  await ctx.reply("Lectura confirmada.", {reply_markup: keyboard});
+});
+
 bot.on("message", async (ctx) => {
   const text = textOf(ctx);
   const chatId = chatIdOf(ctx);
