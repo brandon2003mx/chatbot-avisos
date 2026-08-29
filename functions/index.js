@@ -3,6 +3,7 @@ const {onRequest} = require("firebase-functions/https");
 const admin = require("firebase-admin");
 const {db} = require("./src/config/firebase");
 const {getUpdates} = require("./src/services/telegramService");
+const { FieldValue } = require("firebase-admin/firestore");
 
 setGlobalOptions({
   maxInstances: 10,
@@ -120,14 +121,20 @@ async function handleCreateNotice(req, res) {
       priority: priorityToUse,
       prioridad: priorityToUse,
       carreras: carreras || (carrera ? [carrera] : []),
-      carrera: carrera,
+      carrera: carrera || "",
       semestres: semestres || (semestre ? [semestre] : []),
-      semestre: semestre,
+      semestre: semestre || "",
       grupos: grupos || (grupo ? [grupo] : []),
-      grupo: grupo,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      grupo: grupo || "",
+      createdAt: FieldValue.serverTimestamp(),
       createdBy: req.userId || "anonymous",
     };
+
+    Object.keys(noticeData).forEach((key) => {
+      if (noticeData[key] === undefined || noticeData[key] === null) {
+        delete noticeData[key];
+      }
+    });
 
     console.log("💾 Guardando en Firestore:", noticeData.title);
     const docRef = await db.collection("avisos").add(noticeData);
@@ -166,7 +173,7 @@ async function handleCreateStudent(req, res) {
       carrera: carrera || "",
       semestre: semestre || "",
       grupo: grupo || "",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     };
 
     const docRef = await db.collection("estudiantes").add(studentData);
@@ -188,8 +195,17 @@ exports.api = onRequest(async (req, res) => {
     return res.status(200).send("");
   }
 
-  // Extrae el path
-  const path = req.path || "/";
+  // Normaliza la ruta que llega desde Hosting / Functions emulator
+  const rawPath = req.path || req.originalUrl || req.url || "/";
+  const cleanPath = rawPath.split("?")[0];
+  let path = cleanPath;
+  const apiIndex = cleanPath.lastIndexOf("/api");
+
+  if (apiIndex !== -1) {
+    path = cleanPath.slice(apiIndex + "/api".length) || "/";
+  }
+
+  console.log("🧭 PATH raw:", rawPath, "normalized:", path);
 
   try {
     // Rutas de autenticación

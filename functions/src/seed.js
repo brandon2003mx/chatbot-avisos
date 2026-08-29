@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 const path = require("path");
 
 // Conecta a los emuladores locales
@@ -29,7 +30,7 @@ async function seedData() {
       carreras,
       semestres,
       grupos,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     console.log("✅ Datos académicos creados");
 
@@ -64,7 +65,7 @@ async function seedData() {
       email: adminEmail,
       displayName: "Administrador",
       role: "admin",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     console.log("✅ Rol de admin asignado a:", adminEmail);
 
@@ -80,7 +81,7 @@ async function seedData() {
         carreras: ["Ingeniería en Sistemas"],
         semestres: ["1", "2"],
         grupos: ["A", "B"],
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         createdBy: adminUser.uid,
       },
       {
@@ -90,7 +91,7 @@ async function seedData() {
         carreras: ["Ingeniería Industrial"],
         semestres: ["3", "4"],
         grupos: ["A"],
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         createdBy: adminUser.uid,
       },
     ];
