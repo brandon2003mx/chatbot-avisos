@@ -21,8 +21,8 @@ async function seedData() {
     // 1. Crear datos académicos
     console.log("📚 Creando datos académicos...");
     const carreras = ["Ingeniería en Sistemas", "Ingeniería Industrial", "Administración"];
-    const semestres = ["1", "2", "3", "4", "5", "6", "7", "8"];
-    const grupos = ["A", "B", "C", "D"];
+    const semestres = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    const grupos = ["A", "B", "C"];
 
     // Crear referencia de configuración
     const configRef = db.collection("config").doc("academicData");
