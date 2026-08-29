@@ -1,4 +1,3 @@
-const API_URL = window.APP_CONFIG?.apiUrl || '/api';
 let charts = {};
 
 const emptyDashboard = {
@@ -65,10 +64,6 @@ function renderList(id, notices) {
   list.innerHTML = notices.slice(0, 5).map(item => `<li><strong>${escapeHtml(valueFrom(item, 'titulo', 'title') || 'Aviso sin título')}</strong><span>${Number(valueFrom(item, 'recipients', 'destinatarios') || 0)} destinatarios · ${Number(valueFrom(item, 'confirmed_reads', 'confirmedReads', 'reads') || 0)} leídos</span></li>`).join('');
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
-}
-
 async function loadDashboard() {
   const status = document.getElementById('status');
   status.hidden = true;
@@ -82,6 +77,12 @@ async function loadDashboard() {
   }
 }
 
+requireCoordinador('login.html');
+bindLogout('logoutButton', 'login.html');
 document.getElementById('refreshButton').addEventListener('click', loadDashboard);
-document.getElementById('logoutButton').addEventListener('click', () => { window.location.href = '/login.html'; });
-loadDashboard();
+
+authReady.then(user => {
+  if (!user) return;
+  document.getElementById('coordinator').textContent = `Coordinador: ${user.email}`;
+  loadDashboard();
+});
