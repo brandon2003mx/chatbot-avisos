@@ -147,6 +147,58 @@ async function handleCreateNotice(req, res) {
   }
 }
 
+// ENDPOINT: Obtener avisos
+async function handleGetNotices(req, res) {
+  try {
+    const snapshot = await db.collection("avisos").orderBy("createdAt", "desc").get();
+    const notices = snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
+    return res.status(200).json({ok: true, notices});
+  } catch (error) {
+    console.error("Get notices error:", error);
+    return res.status(500).json({ok: false, error: error.message});
+  }
+}
+
+// ENDPOINT: Editar aviso
+async function handleUpdateNotice(req, res, noticeId) {
+  try {
+    const {titulo, contenido, prioridad, carrera, semestre, grupo} = req.body;
+    if (!titulo || !contenido) {
+      return res.status(400).json({ok: false, error: "Título y mensaje son requeridos"});
+    }
+
+    await db.collection("avisos").doc(noticeId).update({
+      title: titulo,
+      message: contenido,
+      titulo,
+      contenido,
+      priority: prioridad || "Media",
+      prioridad: prioridad || "Media",
+      carrera: carrera || "",
+      carreras: carrera ? [carrera] : [],
+      semestre: semestre || "",
+      semestres: semestre ? [semestre] : [],
+      grupo: grupo || "",
+      grupos: grupo ? [grupo] : [],
+    });
+    return res.status(200).json({ok: true, id: noticeId});
+  } catch (error) {
+    console.error("Update notice error:", error);
+    return res.status(500).json({ok: false, error: error.message});
+  }
+}
+
+// ENDPOINT: Eliminar aviso
+async function handleDeleteNotice(req, res, noticeId) {
+  try {
+    await db.collection("avisos").doc(noticeId).delete();
+    return res.status(200).json({ok: true, id: noticeId});
+  } catch (error) {
+    console.error("Delete notice error:", error);
+    return res.status(500).json({ok: false, error: error.message});
+  }
+}
+
 // ENDPOINT: Obtener estudiantes
 async function handleGetStudents(req, res) {
   try {
@@ -227,8 +279,21 @@ exports.api = onRequest(async (req, res) => {
     }
 
     // Rutas de avisos
+    if (path === "/notices" && req.method === "GET") {
+      return handleGetNotices(req, res);
+    }
+
     if (path === "/notices" && req.method === "POST") {
       return handleCreateNotice(req, res);
+    }
+
+    const noticeMatch = path.match(/^\/notices\/([^/]+)$/);
+    if (noticeMatch && req.method === "PATCH") {
+      return handleUpdateNotice(req, res, noticeMatch[1]);
+    }
+
+    if (noticeMatch && req.method === "DELETE") {
+      return handleDeleteNotice(req, res, noticeMatch[1]);
     }
 
     // Rutas de estudiantes

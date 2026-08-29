@@ -35,6 +35,27 @@
   <main>
     <div id="status" class="message" role="status" hidden></div>
 
+    <section class="notice-manager" aria-labelledby="noticeManagerTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Administración</p>
+          <h2 id="noticeManagerTitle">Gestión de Avisos</h2>
+          <p>Consulta y administra los avisos enviados a cada grupo académico.</p>
+        </div>
+        <button id="manageRefreshButton" class="button-outline dark" type="button">Actualizar lista</button>
+      </div>
+      <div class="table-wrap">
+        <table class="notice-table">
+          <thead>
+            <tr><th>Aviso</th><th>Segmento</th><th>Prioridad</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="managedNotices">
+            <tr><td colspan="4" class="table-empty">Cargando avisos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="hero" id="resumen">
       <div class="hero-card">
         <p class="eyebrow">Vista general</p>
@@ -81,5 +102,26 @@
       </article>
     </section>
   </main>
+
+  <dialog id="noticeDialog" class="notice-dialog" aria-labelledby="editNoticeTitle">
+    <form id="editNoticeForm" method="dialog" class="notice-form">
+      <div class="dialog-header">
+        <div><p class="eyebrow">Gestión de avisos</p><h2 id="editNoticeTitle">Editar aviso</h2></div>
+        <button class="icon-button" type="button" id="closeNoticeDialog" aria-label="Cerrar">×</button>
+      </div>
+      <input id="editNoticeId" type="hidden">
+      <label for="editTitle">Título</label>
+      <input id="editTitle" type="text" required>
+      <label for="editContent">Mensaje</label>
+      <textarea id="editContent" required></textarea>
+      <div class="form-grid">
+        <div><label for="editPriority">Prioridad</label><select id="editPriority"><option>Alta</option><option>Media</option><option>Baja</option></select></div>
+        <div><label for="editCareer">Carrera</label><input id="editCareer" type="text"></div>
+        <div><label for="editSemester">Semestre</label><input id="editSemester" type="text"></div>
+        <div><label for="editGroup">Grupo</label><input id="editGroup" type="text"></div>
+      </div>
+      <div class="form-actions"><button class="primary-button" type="submit">Guardar cambios</button><button class="button-link" id="cancelNoticeEdit" type="button">Cancelar</button></div>
+    </form>
+  </dialog>
 </body>
 </html>
