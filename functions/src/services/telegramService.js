@@ -1,4 +1,5 @@
 const {Api} = require("node-telegram-bot-api");
+const {db} = require("../config/firebase");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -31,7 +32,28 @@ async function enviarMensaje(chatId, mensaje) {
   });
 }
 
+function coincideConSegmento(estudiante, aviso) {
+  const carreras = aviso.carreras || (aviso.carrera ? [aviso.carrera] : []);
+  const semestres = aviso.semestres || (aviso.semestre ? [aviso.semestre] : []);
+  const grupos = aviso.grupos || (aviso.grupo ? [aviso.grupo] : []);
+  return (!carreras.length || carreras.includes(estudiante.carrera)) &&
+    (!semestres.length || semestres.includes(estudiante.semestre)) &&
+    (!grupos.length || grupos.includes(estudiante.grupo));
+}
+
+async function enviarAvisoAEstudiantes(aviso) {
+  const snapshot = await db.collection("estudiantes").where("activo", "==", true).get();
+  const destinatarios = snapshot.docs.map((doc) => doc.data())
+      .filter((estudiante) => estudiante.chatId && coincideConSegmento(estudiante, aviso));
+  const mensaje = `*${aviso.title}*\n\n${aviso.message}`;
+  const resultados = await Promise.allSettled(destinatarios.map((estudiante) =>
+    telegramApi.sendMessage({chat_id: estudiante.chatId, text: mensaje, parse_mode: "Markdown"})
+  ));
+  return resultados.filter((resultado) => resultado.status === "fulfilled").length;
+}
+
 module.exports = {
   getUpdates,
   enviarMensaje,
+  enviarAvisoAEstudiantes,
 };

@@ -2,7 +2,7 @@ const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/https");
 const admin = require("firebase-admin");
 const {db} = require("./src/config/firebase");
-const {getUpdates} = require("./src/services/telegramService");
+const {getUpdates, enviarAvisoAEstudiantes} = require("./src/services/telegramService");
 const { FieldValue } = require("firebase-admin/firestore");
 
 setGlobalOptions({
@@ -139,8 +139,15 @@ async function handleCreateNotice(req, res) {
     console.log("💾 Guardando en Firestore:", noticeData.title);
     const docRef = await db.collection("avisos").add(noticeData);
     console.log("✅ Aviso creado con ID:", docRef.id);
+
+    let deliveredTo = 0;
+    try {
+      deliveredTo = await enviarAvisoAEstudiantes(noticeData);
+    } catch (deliveryError) {
+      console.error("No fue posible enviar el aviso por Telegram:", deliveryError);
+    }
     
-    return res.status(201).json({ok: true, id: docRef.id, message: "Aviso creado exitosamente"});
+    return res.status(201).json({ok: true, id: docRef.id, deliveredTo, message: "Aviso creado exitosamente"});
   } catch (error) {
     console.error("❌ Create notice error:", error);
     return res.status(500).json({ok: false, error: error.message});
