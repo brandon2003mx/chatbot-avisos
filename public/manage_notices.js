@@ -1,4 +1,5 @@
 const API_URL = window.APP_CONFIG?.apiUrl || '/api';
+let academicData = {carreras: [], semestres: [], grupos: []};
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[character]));
@@ -29,6 +30,34 @@ async function requestNotices() {
   const payload = await response.json();
   if (!response.ok || payload.ok === false) throw new Error(payload.error || 'No fue posible obtener los avisos.');
   return payload.notices || [];
+}
+
+async function loadAcademicData() {
+  const response = await fetch(`${API_URL}/dashboard`, {headers: {Accept: 'application/json'}});
+  const payload = await response.json();
+  if (!response.ok || payload.ok === false) throw new Error(payload.error || 'No fue posible cargar los segmentos académicos.');
+  const source = payload.dashboard || payload.data || payload;
+  academicData = {
+    carreras: source.carreras || [],
+    semestres: source.semestres || [],
+    grupos: source.grupos || [],
+  };
+  populateSelect('editCareer', academicData.carreras);
+  populateSelect('editSemester', academicData.semestres);
+  populateSelect('editGroup', academicData.grupos);
+}
+
+function populateSelect(id, values) {
+  const select = document.getElementById(id);
+  values.forEach((value) => select.add(new Option(value, value)));
+}
+
+function selectNoticeValue(id, value) {
+  const select = document.getElementById(id);
+  if (value && !Array.from(select.options).some((option) => option.value === value)) {
+    select.add(new Option(value, value));
+  }
+  select.value = value === 'General' ? '' : value;
 }
 
 function renderNotices(notices) {
@@ -83,9 +112,9 @@ document.getElementById('managedNotices').addEventListener('click', async (event
     editTitle.value = valueFrom(notice, 'titulo', 'title') || '';
     editContent.value = valueFrom(notice, 'contenido', 'message') || '';
     editPriority.value = normalizePriority(valueFrom(notice, 'prioridad', 'priority'));
-    editCareer.value = noticeValue(notice, 'carrera', 'carreras') === 'General' ? '' : noticeValue(notice, 'carrera', 'carreras');
-    editSemester.value = noticeValue(notice, 'semestre', 'semestres') === 'General' ? '' : noticeValue(notice, 'semestre', 'semestres');
-    editGroup.value = noticeValue(notice, 'grupo', 'grupos') === 'General' ? '' : noticeValue(notice, 'grupo', 'grupos');
+    selectNoticeValue('editCareer', noticeValue(notice, 'carrera', 'carreras'));
+    selectNoticeValue('editSemester', noticeValue(notice, 'semestre', 'semestres'));
+    selectNoticeValue('editGroup', noticeValue(notice, 'grupo', 'grupos'));
     noticeDialog.showModal();
   } catch (error) { showStatus(error.message); }
 });
@@ -93,4 +122,5 @@ document.getElementById('editNoticeForm').addEventListener('submit', (event) => 
 document.getElementById('closeNoticeDialog').addEventListener('click', () => noticeDialog.close());
 document.getElementById('cancelNoticeEdit').addEventListener('click', () => noticeDialog.close());
 document.getElementById('logoutButton').addEventListener('click', () => { window.location.href = 'login.html'; });
+loadAcademicData().catch((error) => showStatus(error.message));
 loadNotices();
