@@ -91,5 +91,5 @@ if (composeButton) composeButton.addEventListener('click', () => { window.locati
 const studentsButton = document.getElementById('studentsButton');
 if (studentsButton) studentsButton.addEventListener('click', () => { window.location.href = 'students.html'; });
 
-document.getElementById('logoutButton').addEventListener('click', () => { window.location.href = '/login.html'; });
+document.getElementById('logoutButton').addEventListener('click', () => { window.location.href = 'login.html'; });
 loadDashboard();
