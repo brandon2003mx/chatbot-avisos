@@ -1,5 +1,6 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/https");
+const {defineSecret} = require("firebase-functions/params");
 
 const {
   obtenerCarreras,
@@ -32,7 +33,10 @@ setGlobalOptions({
   maxInstances: 10,
 });
 
-exports.api = onRequest(async (req, res) => {
+const telegramBotToken = defineSecret("TELEGRAM_BOT_TOKEN");
+const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+
+exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
 
@@ -1078,29 +1082,42 @@ exports.api = onRequest(async (req, res) => {
 /**
  * Recibe las actualizaciones de Telegram.
  */
-exports.telegramWebhook = onRequest(async (req, res) => {
-  try {
-    if (req.method !== "POST") {
-      return res.status(405).json({
-        ok: false,
-        mensaje: "Método no permitido",
-      });
-    }
+exports.telegramWebhook = onRequest(
+    {secrets: [telegramBotToken, telegramWebhookSecret]},
+    async (req, res) => {
+      try {
+        if (req.method !== "POST") {
+          return res.status(405).json({
+            ok: false,
+            mensaje: "Método no permitido",
+          });
+        }
 
-    await procesarActualizacion(req.body);
+        if (
+          req.get("X-Telegram-Bot-Api-Secret-Token") !==
+          telegramWebhookSecret.value()
+        ) {
+          return res.status(401).json({
+            ok: false,
+            mensaje: "No autorizado",
+          });
+        }
 
-    return res.status(200).json({
-      ok: true,
-    });
-  } catch (error) {
-    console.error(
-        "Error procesando actualización de Telegram:",
-        error,
-    );
+        await procesarActualizacion(req.body);
 
-    return res.status(500).json({
-      ok: false,
-      mensaje: "Error procesando actualización",
-    });
-  }
-});
+        return res.status(200).json({
+          ok: true,
+        });
+      } catch (error) {
+        console.error(
+            "Error procesando actualización de Telegram:",
+            error,
+        );
+
+        return res.status(500).json({
+          ok: false,
+          mensaje: "Error procesando actualización",
+        });
+      }
+    },
+);
