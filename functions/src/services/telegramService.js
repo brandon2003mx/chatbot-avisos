@@ -1,12 +1,22 @@
 const {Api} = require("node-telegram-bot-api");
 
-const token = process.env.TELEGRAM_BOT_TOKEN;
+/**
+ * Obtiene la API de Telegram.
+ *
+ * El token se obtiene en tiempo de ejecución, después de que
+ * Firebase haya inyectado el secreto TELEGRAM_BOT_TOKEN.
+ *
+ * @return {Api}
+ */
+function obtenerTelegramApi() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
 
-if (!token) {
-  throw new Error("Falta TELEGRAM_BOT_TOKEN en las variables de entorno.");
+  if (!token) {
+    throw new Error("Falta TELEGRAM_BOT_TOKEN en las variables de entorno.");
+  }
+
+  return new Api(token);
 }
-
-const telegramApi = new Api(token);
 
 /**
  * Envía un mensaje de texto.
@@ -17,6 +27,8 @@ const telegramApi = new Api(token);
  * @return {Promise<Object>}
  */
 async function enviarMensaje(chatId, mensaje, opciones = {}) {
+  const telegramApi = obtenerTelegramApi();
+
   return telegramApi.sendMessage({
     chat_id: chatId,
     text: mensaje,
@@ -31,6 +43,8 @@ async function enviarMensaje(chatId, mensaje, opciones = {}) {
  * @return {Promise<Object>}
  */
 async function responderCallback(callbackQueryId) {
+  const telegramApi = obtenerTelegramApi();
+
   return telegramApi.answerCallbackQuery({
     callback_query_id: callbackQueryId,
   });
@@ -42,6 +56,8 @@ async function responderCallback(callbackQueryId) {
  * @return {Promise<Object>}
  */
 async function getUpdates() {
+  const telegramApi = obtenerTelegramApi();
+
   return telegramApi.getUpdates({});
 }
 
