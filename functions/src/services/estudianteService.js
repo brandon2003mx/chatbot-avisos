@@ -52,14 +52,14 @@ async function guardarEstudiante(
  *
  * @param {string} tipoSegmentacion Tipo de segmentación.
  * @param {string} carreraId ID de la carrera.
- * @param {number|null} semestre Número del semestre.
+ * @param {string|null} semestreId ID del semestre.
  * @param {string|null} grupoId ID del grupo.
  * @return {Promise<Array>}
  */
 async function buscarEstudiantesPorSegmentacion(
     tipoSegmentacion,
     carreraId = null,
-    semestre = null,
+    semestreId = null,
     grupoId = null,
 ) {
   let consulta = db
@@ -77,13 +77,13 @@ async function buscarEstudiantesPorSegmentacion(
   if (tipoSegmentacion === "semestre") {
     consulta = consulta
         .where("carreraId", "==", carreraId)
-        .where("semestre", "==", semestre);
+        .where("semestreId", "==", semestreId);
   }
 
   if (tipoSegmentacion === "grupo") {
     consulta = consulta
         .where("carreraId", "==", carreraId)
-        .where("semestre", "==", semestre)
+        .where("semestreId", "==", semestreId)
         .where("grupoId", "==", grupoId);
   }
 

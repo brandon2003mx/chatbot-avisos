@@ -53,8 +53,8 @@ function validarDatosAviso(aviso) {
   if (
     (aviso.tipoSegmentacion === "semestre" ||
       aviso.tipoSegmentacion === "grupo") &&
-    (aviso.semestre === null ||
-      aviso.semestre === undefined)
+    (aviso.semestreId === null ||
+      aviso.semestreId === undefined)
   ) {
     throw new Error(
         "El semestre es obligatorio para esta segmentación.",
@@ -94,7 +94,7 @@ async function validarSegmentacion(aviso) {
   if (aviso.tipoSegmentacion === "semestre") {
     await validarSemestreActivo(
         aviso.carreraId,
-        String(aviso.semestre),
+        String(aviso.semestreId),
     );
 
     return;
@@ -103,7 +103,7 @@ async function validarSegmentacion(aviso) {
   if (aviso.tipoSegmentacion === "grupo") {
     await validarGrupoActivo(
         aviso.carreraId,
-        String(aviso.semestre),
+        String(aviso.semestreId),
         aviso.grupoId,
     );
   }
@@ -126,11 +126,11 @@ async function crearAviso(aviso) {
         contenido: aviso.contenido.trim(),
         tipoSegmentacion: aviso.tipoSegmentacion,
         carreraId: aviso.carreraId || null,
-        semestre:
-          aviso.semestre === undefined ||
-          aviso.semestre === null ?
+        semestreId:
+          aviso.semestreId === undefined ||
+          aviso.semestreId === null ?
             null :
-            Number(aviso.semestre),
+            String(aviso.semestreId),
         grupoId: aviso.grupoId || null,
         autorId: aviso.autorId || null,
         activo: true,
@@ -151,9 +151,9 @@ async function obtenerDestinatarios(aviso) {
   return buscarEstudiantesPorSegmentacion(
       aviso.tipoSegmentacion,
       aviso.carreraId || null,
-      aviso.semestre === undefined ?
+      aviso.semestreId === undefined ?
         null :
-        aviso.semestre,
+        aviso.semestreId,
       aviso.grupoId || null,
   );
 }

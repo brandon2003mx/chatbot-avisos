@@ -113,7 +113,7 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
     contenido: form.get('contenido'),
     tipoSegmentacion,
     carreraId: tipoSegmentacion === 'todos' ? null : carreraSelect.value,
-    semestre: (tipoSegmentacion === 'semestre' || tipoSegmentacion === 'grupo') ? semestreSelect.value : null,
+    semestreId: (tipoSegmentacion === 'semestre' || tipoSegmentacion === 'grupo') ? semestreSelect.value : null,
     grupoId: tipoSegmentacion === 'grupo' ? grupoSelect.value : null,
   };
   try {

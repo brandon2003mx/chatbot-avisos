@@ -133,7 +133,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         contenido,
         tipoSegmentacion,
         carreraId,
-        semestre,
+        semestreId,
         grupoId,
       } = req.body;
 
@@ -142,10 +142,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         contenido,
         tipoSegmentacion,
         carreraId,
-        semestre:
-          semestre === undefined || semestre === null ?
+        semestreId:
+          semestreId === undefined || semestreId === null ?
             null :
-            Number(semestre),
+            String(semestreId),
         grupoId,
         autorId: autenticacion.uid,
       });
