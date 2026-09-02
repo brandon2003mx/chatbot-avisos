@@ -159,13 +159,70 @@ async function obtenerDestinatarios(aviso) {
 }
 
 /**
+ * Crea los documentos iniciales de destinatarios de un aviso.
+ *
+ * Cada documento usa el telegramId como ID para evitar
+ * duplicados, y solo conserva el estado de envío: no copia
+ * el estado académico actual del estudiante.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @param {Array} estudiantes Destinatarios.
+ * @return {Promise<void>}
+ */
+async function crearDestinatarios(avisoId, estudiantes) {
+  const coleccion = db
+      .collection("avisos")
+      .doc(avisoId)
+      .collection("destinatarios");
+
+  const validos = estudiantes.filter(
+      (estudiante) => estudiante.telegramId,
+  );
+
+  const tamanoLote = 500;
+
+  for (
+    let inicio = 0;
+    inicio < validos.length;
+    inicio += tamanoLote
+  ) {
+    const lote = validos.slice(
+        inicio,
+        inicio + tamanoLote,
+    );
+
+    const batch = db.batch();
+
+    for (const estudiante of lote) {
+      const telegramId = String(estudiante.telegramId);
+
+      batch.set(
+          coleccion.doc(telegramId),
+          {
+            telegramId,
+            enviado: false,
+          },
+      );
+    }
+
+    await batch.commit();
+  }
+}
+
+/**
  * Envía un aviso por Telegram.
  *
+ * Registra el resultado individual de cada destinatario en
+ * avisos/{avisoId}/destinatarios/{telegramId}. Un error al
+ * enviar a un destinatario no detiene el envío al resto.
+ *
+ * @param {string} avisoId ID del aviso.
  * @param {Object} aviso Datos del aviso.
  * @param {Array} estudiantes Destinatarios.
  * @return {Promise<Object>}
  */
 async function enviarAvisoTelegram(
+    avisoId,
     aviso,
     estudiantes,
 ) {
@@ -175,26 +232,43 @@ async function enviarAvisoTelegram(
   const mensaje =
       `📢 ${aviso.titulo}\n\n${aviso.contenido}`;
 
+  const coleccion = db
+      .collection("avisos")
+      .doc(avisoId)
+      .collection("destinatarios");
+
   for (const estudiante of estudiantes) {
     if (!estudiante.telegramId) {
       errores++;
       continue;
     }
 
+    const telegramId = String(estudiante.telegramId);
+
     try {
       await enviarMensaje(
-          estudiante.telegramId,
+          telegramId,
           mensaje,
       );
 
       enviados++;
+
+      await coleccion.doc(telegramId).update({
+        enviado: true,
+        fechaEnvio: new Date(),
+      });
     } catch (error) {
       errores++;
 
       console.error(
-          `Error enviando aviso a ${estudiante.telegramId}:`,
+          `Error enviando aviso a ${telegramId}:`,
           error.message,
       );
+
+      await coleccion.doc(telegramId).update({
+        enviado: false,
+        error: error.message || String(error),
+      });
     }
   }
 
@@ -230,7 +304,13 @@ async function crearYEnviarAviso(aviso) {
 
   const avisoId = await crearAviso(aviso);
 
+  await crearDestinatarios(
+      avisoId,
+      destinatarios,
+  );
+
   const resultado = await enviarAvisoTelegram(
+      avisoId,
       aviso,
       destinatarios,
   );
@@ -275,6 +355,7 @@ async function obtenerAvisos(limite = 50) {
 module.exports = {
   crearAviso,
   obtenerDestinatarios,
+  crearDestinatarios,
   enviarAvisoTelegram,
   crearYEnviarAviso,
   obtenerAvisos,
