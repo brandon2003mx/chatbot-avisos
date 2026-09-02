@@ -134,6 +134,7 @@ async function crearAviso(aviso) {
         grupoId: aviso.grupoId || null,
         autorId: aviso.autorId || null,
         activo: true,
+        estadoEnvio: "procesando",
         fechaCreacion: new Date(),
         fechaActualizacion: new Date(),
       });
@@ -282,8 +283,13 @@ async function enviarAvisoTelegram(
 /**
  * Crea y envía un aviso.
  *
- * El aviso solo se crea si existe al menos
- * un estudiante destinatario.
+ * El aviso solo se crea si existe al menos un estudiante
+ * destinatario. Desde su creación queda con
+ * estadoEnvio: "procesando"; al terminar el envío se actualiza
+ * a "completado" o "completado_con_errores" según el resultado.
+ * Si ocurre un fallo general (no un fallo individual de Telegram,
+ * que ya se maneja dentro de enviarAvisoTelegram), se intenta
+ * marcar el aviso como "fallido" antes de propagar el error.
  *
  * @param {Object} aviso Datos del aviso.
  * @return {Promise<Object>}
@@ -304,33 +310,59 @@ async function crearYEnviarAviso(aviso) {
 
   const avisoId = await crearAviso(aviso);
 
-  await crearDestinatarios(
+  try {
+    await crearDestinatarios(
+        avisoId,
+        destinatarios,
+    );
+
+    const resultado = await enviarAvisoTelegram(
+        avisoId,
+        aviso,
+        destinatarios,
+    );
+
+    const estadoEnvio =
+      resultado.errores === 0 ?
+        "completado" :
+        "completado_con_errores";
+
+    await db
+        .collection("avisos")
+        .doc(avisoId)
+        .update({
+          destinatarios: resultado.total,
+          enviados: resultado.enviados,
+          errores: resultado.errores,
+          estadoEnvio,
+          fechaActualizacion: new Date(),
+        });
+
+    return {
       avisoId,
-      destinatarios,
-  );
+      destinatarios: resultado.total,
+      enviados: resultado.enviados,
+      errores: resultado.errores,
+      estadoEnvio,
+    };
+  } catch (error) {
+    try {
+      await db
+          .collection("avisos")
+          .doc(avisoId)
+          .update({
+            estadoEnvio: "fallido",
+            fechaActualizacion: new Date(),
+          });
+    } catch (errorActualizacion) {
+      console.error(
+          `No se pudo marcar como fallido el aviso ${avisoId}:`,
+          errorActualizacion.message,
+      );
+    }
 
-  const resultado = await enviarAvisoTelegram(
-      avisoId,
-      aviso,
-      destinatarios,
-  );
-
-  await db
-      .collection("avisos")
-      .doc(avisoId)
-      .update({
-        destinatarios: resultado.total,
-        enviados: resultado.enviados,
-        errores: resultado.errores,
-        fechaActualizacion: new Date(),
-      });
-
-  return {
-    avisoId,
-    destinatarios: resultado.total,
-    enviados: resultado.enviados,
-    errores: resultado.errores,
-  };
+    throw error;
+  }
 }
 
 /**
