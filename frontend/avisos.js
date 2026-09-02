@@ -106,6 +106,11 @@ async function loadAvisos() {
 document.getElementById('avisoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
+  const submitButton = formElement.querySelector('button[type="submit"]');
+  // Se genera una sola vez por intento de envío lógico: si en el
+  // futuro se agrega un reintento HTTP para esta misma operación,
+  // debe reutilizar esta misma clave, no generar una nueva.
+  const idempotencyKey = crypto.randomUUID();
   const form = new FormData(formElement);
   const tipoSegmentacion = form.get('tipoSegmentacion');
   const body = {
@@ -116,14 +121,21 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
     semestreId: (tipoSegmentacion === 'semestre' || tipoSegmentacion === 'grupo') ? semestreSelect.value : null,
     grupoId: tipoSegmentacion === 'grupo' ? grupoSelect.value : null,
   };
+  submitButton.disabled = true;
   try {
-    const payload = await apiRequest('/avisos', { method: 'POST', body: JSON.stringify(body) });
+    const payload = await apiRequest('/avisos', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(body),
+    });
     showMessage(`Aviso enviado a ${payload.destinatarios} destinatario(s): ${payload.enviados} entregados, ${payload.errores} con error.`, 'success');
     formElement.reset();
     updateVisibleFields();
     loadAvisos();
   } catch (error) {
     showMessage(error.message);
+  } finally {
+    submitButton.disabled = false;
   }
 });
 

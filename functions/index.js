@@ -128,6 +128,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         throw error;
       }
 
+      const idempotencyKey = req.headers["idempotency-key"];
+
       const {
         titulo,
         contenido,
@@ -137,22 +139,38 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         grupoId,
       } = req.body;
 
-      const resultado = await crearYEnviarAviso({
-        titulo,
-        contenido,
-        tipoSegmentacion,
-        carreraId,
-        semestreId:
-          semestreId === undefined || semestreId === null ?
-            null :
-            String(semestreId),
-        grupoId,
-        autorId: autenticacion.uid,
-      });
+      let resultado;
 
-      return res.status(201).json({
+      try {
+        resultado = await crearYEnviarAviso({
+          titulo,
+          contenido,
+          tipoSegmentacion,
+          carreraId,
+          semestreId:
+            semestreId === undefined || semestreId === null ?
+              null :
+              String(semestreId),
+          grupoId,
+          autorId: autenticacion.uid,
+        }, idempotencyKey);
+      } catch (error) {
+        if (error.idempotencyConflict) {
+          return res.status(409).json({
+            ok: false,
+            mensaje:
+              "La Idempotency-Key ya fue utilizada para otra solicitud.",
+          });
+        }
+
+        throw error;
+      }
+
+      const {nuevo, ...datosResultado} = resultado;
+
+      return res.status(nuevo ? 201 : 200).json({
         ok: true,
-        ...resultado,
+        ...datosResultado,
       });
     }
 
@@ -1028,6 +1046,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
     console.error("Error en la API:", error);
 
     const erroresCliente = [
+      "El encabezado Idempotency-Key es obligatorio.",
+      "El encabezado Idempotency-Key no es válido.",
       "El título es obligatorio.",
       "El contenido es obligatorio.",
       "El tipo de segmentación no es válido.",
