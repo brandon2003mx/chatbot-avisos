@@ -1,6 +1,10 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/https");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onTaskDispatched} = require("firebase-functions/v2/tasks");
 const {defineSecret} = require("firebase-functions/params");
+
+const {getFunctions} = require("firebase-admin/functions");
 
 const {
   obtenerCarreras,
@@ -22,7 +26,12 @@ const {
 const {
   crearYEnviarAviso,
   obtenerAvisos,
+  MARCADOR_ESTRUCTURA_LISTA,
 } = require("./src/services/avisoService");
+
+const {
+  procesarLote,
+} = require("./src/services/avisoWorkerService");
 
 const {
   autenticarUsuario,
@@ -35,6 +44,26 @@ setGlobalOptions({
 
 const telegramBotToken = defineSecret("TELEGRAM_BOT_TOKEN");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+
+// Configuración conservadora de la cola de envío de avisos. No
+// busca throughput máximo todavía: el objetivo de esta fase es
+// recuperación y ausencia de duplicados, no rendimiento.
+//
+// DISPATCH_DEADLINE_SECONDS se usa tanto como dispatchDeadlineSeconds
+// (cuánto espera Cloud Tasks la respuesta) como timeoutSeconds del
+// propio worker (cuánto lo deja correr Cloud Functions antes de
+// matarlo). Deben coincidir: si timeoutSeconds fuera menor, el
+// contenedor podría recibir SIGKILL antes de que Cloud Tasks
+// considere agotado el dispatch deadline, dejando este último sin
+// efecto real. 300s (5 min) es holgado para un lote de TAMANO_LOTE
+// incluso en el escenario "lento" medido en el Prompt 7C, sin
+// acercarse al máximo permitido para funciones de cola de tareas
+// (1800s, verificado contra los tipos instalados de firebase-functions).
+const DISPATCH_DEADLINE_SECONDS = 300;
+const MAX_INTENTOS_TAREA = 5;
+const BACKOFF_MINIMO_SEGUNDOS = 30;
+const MAX_DISPATCHES_CONCURRENTES = 5;
+const MAX_DISPATCHES_POR_SEGUNDO = 5;
 
 exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
@@ -1139,5 +1168,123 @@ exports.telegramWebhook = onRequest(
           mensaje: "Error procesando actualización",
         });
       }
+    },
+);
+
+/**
+ * Encola las Cloud Tasks de TODOS los lotes de un aviso, en cuanto
+ * la estructura completa de lotes queda confirmada en Firestore.
+ *
+ * Se dispara sobre la creación del documento marcador
+ * `MARCADOR_ESTRUCTURA_LISTA` (no sobre la creación de cada lote
+ * individual) a propósito: `crearLotes()` solo escribe ese marcador
+ * después de que TODOS los commits de lotes hayan resuelto con
+ * éxito. Si la creación de la estructura falla a mitad de camino
+ * (algunos lotes creados, otros no), el marcador nunca se crea, así
+ * que este trigger nunca se dispara para ese aviso y ningún lote
+ * — ni siquiera los que sí llegaron a crearse — puede empezar a
+ * encolarse ni procesarse. Esto evita la ventana en la que un
+ * aviso podía terminar marcado "fallido" mientras algunos de sus
+ * lotes ya estaban siendo enviados.
+ *
+ * Cualquier otro documento creado bajo lotes/ (los lotes en sí,
+ * con ID `lote-{n}`) se ignora aquí: nunca dispara el encolado por
+ * sí solo.
+ *
+ * Los nombres de tarea (`avisos-{avisoId}-lote-{indice}`) son
+ * deterministas y se calculan sin necesidad de leer cada documento
+ * de lote, así que un reintento de este trigger (`retry: true`)
+ * simplemente vuelve a intentar encolar las mismas N tareas: las ya
+ * creadas responden `ALREADY_EXISTS` (tratado como éxito lógico) y
+ * las que faltaban se crean. Cualquier otro error se relanza para
+ * que la plataforma reintente el trigger completo.
+ */
+exports.encolarLoteAviso = onDocumentCreated(
+    {
+      document: "avisos/{avisoId}/lotes/{loteId}",
+      retry: true,
+    },
+    async (event) => {
+      const {avisoId, loteId} = event.params;
+
+      if (loteId !== MARCADOR_ESTRUCTURA_LISTA) {
+        return;
+      }
+
+      if (!event.data) {
+        return;
+      }
+
+      const marcador = event.data.data();
+      const totalLotes = marcador.totalLotes || 0;
+
+      const cola = getFunctions().taskQueue("procesarLoteAviso");
+
+      for (let indice = 0; indice < totalLotes; indice++) {
+        const loteIdActual = `lote-${indice}`;
+        const taskName = `avisos-${avisoId}-lote-${indice}`;
+
+        try {
+          await cola.enqueue(
+              {avisoId, loteId: loteIdActual},
+              {
+                id: taskName,
+                dispatchDeadlineSeconds: DISPATCH_DEADLINE_SECONDS,
+              },
+          );
+        } catch (error) {
+          if (error.code === "functions/task-already-exists") {
+            continue;
+          }
+
+          throw error;
+        }
+      }
+    },
+);
+
+/**
+ * Worker que procesa un lote de destinatarios de un aviso.
+ *
+ * Se invoca exclusivamente vía Cloud Tasks (nunca como un endpoint
+ * HTTP público): la autenticación OIDC de la tarea la valida el
+ * propio runtime de onTaskDispatched antes de ejecutar el handler.
+ * Asume ejecución at-least-once: toda la lógica de idempotencia
+ * (claim por destinatario, cierre de lote una sola vez) vive en
+ * avisoWorkerService.js.
+ *
+ * timeoutSeconds se fija igual a DISPATCH_DEADLINE_SECONDS a
+ * propósito: sin esto, el worker heredaría el timeout por defecto
+ * de Cloud Functions 2nd gen (60s), muy por debajo de lo que
+ * dispatchDeadlineSeconds le permite a Cloud Tasks esperar, y el
+ * contenedor podría recibir SIGKILL antes de que ese deadline
+ * tenga oportunidad de cumplir su función.
+ */
+exports.procesarLoteAviso = onTaskDispatched(
+    {
+      secrets: [telegramBotToken],
+      timeoutSeconds: DISPATCH_DEADLINE_SECONDS,
+      retryConfig: {
+        maxAttempts: MAX_INTENTOS_TAREA,
+        minBackoffSeconds: BACKOFF_MINIMO_SEGUNDOS,
+      },
+      rateLimits: {
+        maxConcurrentDispatches: MAX_DISPATCHES_CONCURRENTES,
+        maxDispatchesPerSecond: MAX_DISPATCHES_POR_SEGUNDO,
+      },
+    },
+    async (request) => {
+      const {avisoId, loteId} = request.data || {};
+
+      if (!avisoId || !loteId) {
+        console.error(
+            "Payload inválido para procesarLoteAviso:",
+            request.data,
+        );
+
+        return;
+      }
+
+      await procesarLote(avisoId, loteId);
     },
 );

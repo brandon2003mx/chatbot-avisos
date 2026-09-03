@@ -128,7 +128,7 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(body),
     });
-    showMessage(`Aviso enviado a ${payload.destinatarios} destinatario(s): ${payload.enviados} entregados, ${payload.errores} con error.`, 'success');
+    showMessage(`Aviso creado y puesto en procesamiento para ${payload.destinatarios} destinatario(s). El envío continúa en segundo plano.`, 'success');
     formElement.reset();
     updateVisibleFields();
     loadAvisos();

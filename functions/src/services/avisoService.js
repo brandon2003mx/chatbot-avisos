@@ -12,9 +12,33 @@ const {
   buscarEstudiantesPorSegmentacion,
 } = require("./estudianteService");
 
-const {
-  enviarMensaje,
-} = require("./telegramService");
+/**
+ * Cantidad de destinatarios por lote de envío. Centralizada aquí
+ * para poder ajustarla más adelante sin buscar el valor disperso
+ * por el código.
+ *
+ * @type {number}
+ */
+const TAMANO_LOTE = 50;
+
+/**
+ * ID del documento "marcador" dentro de avisos/{avisoId}/lotes que
+ * señala que TODOS los lotes del aviso ya fueron creados con
+ * éxito. Empieza con "_" para no colisionar nunca con los IDs
+ * deterministas de lote (`lote-0`, `lote-1`, ...).
+ *
+ * El trigger de Firestore que encola las Cloud Tasks (definido en
+ * functions/index.js) solo reacciona a la creación de ESTE
+ * documento, nunca a la creación de un lote individual. Así, si la
+ * creación de la estructura completa del aviso falla a mitad de
+ * camino (algunos lotes creados, otros no), este marcador nunca
+ * llega a existir y ningún lote puede empezar a encolarse ni
+ * procesarse — sin necesidad de una transacción gigante que
+ * incluya todos los destinatarios y lotes de una vez.
+ *
+ * @type {string}
+ */
+const MARCADOR_ESTRUCTURA_LISTA = "_estructura_lista";
 
 /**
  * Valida los datos básicos de un aviso.
@@ -222,12 +246,17 @@ class IdempotencyKeyExistsError extends Error {
  * @param {string} idempotencyKey Clave de idempotencia.
  * @param {Object} avisoNormalizado Aviso ya validado y normalizado.
  * @param {string} requestHash Hash del contenido lógico del aviso.
+ * @param {number} totalDestinatarios Cantidad de destinatarios válidos.
+ * @param {number} totalLotes Cantidad de lotes en los que se dividirá
+ *   el envío.
  * @return {Promise<string>} ID del aviso reclamado/creado.
  */
 async function reclamarIdempotencyKeyYCrearAviso(
     idempotencyKey,
     avisoNormalizado,
     requestHash,
+    totalDestinatarios,
+    totalLotes,
 ) {
   const avisoRef = db.collection("avisos").doc();
 
@@ -262,7 +291,13 @@ async function reclamarIdempotencyKeyYCrearAviso(
       grupoId: avisoNormalizado.grupoId,
       autorId: avisoNormalizado.autorId,
       activo: true,
-      estadoEnvio: "procesando",
+      estadoEnvio: "pendiente",
+      destinatarios: totalDestinatarios,
+      enviados: 0,
+      errores: 0,
+      ambiguos: 0,
+      totalLotes,
+      lotesTerminales: 0,
       idempotencyKey,
       requestHash,
       fechaCreacion: ahora,
@@ -343,6 +378,7 @@ async function manejarIdempotencyKeyExistente(
     destinatarios: aviso.destinatarios,
     enviados: aviso.enviados,
     errores: aviso.errores,
+    ambiguos: aviso.ambiguos,
     estadoEnvio: aviso.estadoEnvio,
   };
 }
@@ -416,95 +452,95 @@ async function crearDestinatarios(avisoId, estudiantes) {
 }
 
 /**
- * Envía un aviso por Telegram.
+ * Crea los lotes en los que se dividirá el envío de un aviso.
  *
- * Registra el resultado individual de cada destinatario en
- * avisos/{avisoId}/destinatarios/{telegramId}. Un error al
- * enviar a un destinatario no detiene el envío al resto.
+ * Cada lote es un documento con ID determinista (lote-0, lote-1,
+ * ...) que solo contiene los telegramId de sus destinatarios (sin
+ * datos personales) y un nombre determinista de Cloud Task, para
+ * que el encolado posterior (fuera de este servicio) sea
+ * idempotente. El orden de los destinatarios dentro de los lotes
+ * es estable: es el mismo orden en el que llegaron en
+ * `estudiantes`.
+ *
+ * Una vez que TODOS los lotes se crearon con éxito (todos los
+ * commits de lotes por debajo resolvieron), se crea el documento
+ * marcador `MARCADOR_ESTRUCTURA_LISTA`. Si cualquier commit
+ * anterior falla, esta función lanza y el marcador nunca se
+ * escribe — por diseño, para que el trigger de encolado (que solo
+ * reacciona a la creación del marcador) nunca tenga nada que
+ * procesar sobre una estructura de lotes incompleta.
  *
  * @param {string} avisoId ID del aviso.
- * @param {Object} aviso Datos del aviso.
- * @param {Array} estudiantes Destinatarios.
- * @return {Promise<Object>}
+ * @param {Array} estudiantes Destinatarios (mismo arreglo usado por
+ *   crearDestinatarios).
+ * @return {Promise<void>}
  */
-async function enviarAvisoTelegram(
-    avisoId,
-    aviso,
-    estudiantes,
-) {
-  let enviados = 0;
-  let errores = 0;
-
-  const mensaje =
-      `📢 ${aviso.titulo}\n\n${aviso.contenido}`;
+async function crearLotes(avisoId, estudiantes) {
+  const validos = estudiantes
+      .filter((estudiante) => estudiante.telegramId)
+      .map((estudiante) => String(estudiante.telegramId));
 
   const coleccion = db
       .collection("avisos")
       .doc(avisoId)
-      .collection("destinatarios");
+      .collection("lotes");
 
-  for (const estudiante of estudiantes) {
-    if (!estudiante.telegramId) {
-      errores++;
-      continue;
-    }
+  const totalLotes = Math.ceil(validos.length / TAMANO_LOTE);
+  const tamanoLoteEscritura = 500;
 
-    const telegramId = String(estudiante.telegramId);
+  for (
+    let inicio = 0;
+    inicio < totalLotes;
+    inicio += tamanoLoteEscritura
+  ) {
+    const fin = Math.min(inicio + tamanoLoteEscritura, totalLotes);
+    const batch = db.batch();
 
-    try {
-      await enviarMensaje(
-          telegramId,
-          mensaje,
+    for (let indice = inicio; indice < fin; indice++) {
+      const telegramIds = validos.slice(
+          indice * TAMANO_LOTE,
+          (indice + 1) * TAMANO_LOTE,
       );
 
-      enviados++;
-
-      await coleccion.doc(telegramId).update({
-        enviado: true,
-        fechaEnvio: new Date(),
-      });
-    } catch (error) {
-      errores++;
-
-      console.error(
-          `Error enviando aviso a ${telegramId}:`,
-          error.message,
-      );
-
-      await coleccion.doc(telegramId).update({
-        enviado: false,
-        error: error.message || String(error),
+      batch.set(coleccion.doc(`lote-${indice}`), {
+        indice,
+        estado: "pendiente",
+        taskName: `avisos-${avisoId}-lote-${indice}`,
+        telegramIds,
+        fechaCreacion: new Date(),
       });
     }
+
+    await batch.commit();
   }
 
-  return {
-    total: estudiantes.length,
-    enviados,
-    errores,
-  };
+  await coleccion.doc(MARCADOR_ESTRUCTURA_LISTA).set({
+    totalLotes,
+    fechaCreacion: new Date(),
+  });
 }
 
 /**
- * Crea y envía un aviso, protegido por una Idempotency-Key.
+ * Crea un aviso y lo deja listo para ser enviado de forma
+ * asíncrona, protegido por una Idempotency-Key.
  *
  * Si la clave no había sido usada, reclama la clave y crea el
- * aviso de forma atómica (transacción), y solo después continúa
- * con la creación de destinatarios y el envío por Telegram. El
- * aviso queda desde su creación con estadoEnvio: "procesando"; al
- * terminar el envío se actualiza a "completado" o
- * "completado_con_errores" según el resultado. Si ocurre un fallo
- * general (no un fallo individual de Telegram, que ya se maneja
- * dentro de enviarAvisoTelegram), se intenta marcar el aviso como
- * "fallido" antes de propagar el error.
+ * aviso de forma atómica (transacción) con estadoEnvio:"pendiente",
+ * y solo después crea sus destinatarios y sus lotes. Esta función
+ * NO espera ni realiza ningún envío a Telegram: eso lo hace el
+ * worker asíncrono (avisoWorkerService.js), disparado por un
+ * trigger de Firestore que encola una Cloud Task por lote. Si la
+ * creación de destinatarios o lotes falla después de haber
+ * reclamado la clave (un fallo general, no un fallo individual de
+ * envío), se intenta marcar el aviso como "fallido" antes de
+ * propagar el error.
  *
  * Si la clave ya había sido usada para la misma operación
  * (mismo autorId y mismo contenido), se devuelve el estado actual
- * del aviso existente sin volver a crear destinatarios ni a
- * enviar Telegram, sin importar en qué estadoEnvio se encuentre.
- * Si la clave ya había sido usada para una operación distinta, se
- * lanza un error de conflicto sin revelar datos del aviso
- * existente.
+ * del aviso existente sin volver a crear destinatarios ni lotes,
+ * sin importar en qué estadoEnvio se encuentre. Si la clave ya
+ * había sido usada para una operación distinta, se lanza un error
+ * de conflicto sin revelar datos del aviso existente.
  *
  * @param {Object} aviso Datos del aviso.
  * @param {string} idempotencyKey Clave de idempotencia (UUIDv4).
@@ -525,6 +561,12 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
     );
   }
 
+  const totalValidos = destinatarios.filter(
+      (estudiante) => estudiante.telegramId,
+  ).length;
+
+  const totalLotes = Math.ceil(totalValidos / TAMANO_LOTE);
+
   const avisoNormalizado = normalizarAviso(aviso);
   const requestHash = calcularRequestHash(avisoNormalizado);
 
@@ -535,6 +577,8 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
         idempotencyKey,
         avisoNormalizado,
         requestHash,
+        totalValidos,
+        totalLotes,
     );
   } catch (error) {
     if (error instanceof IdempotencyKeyExistsError) {
@@ -554,36 +598,10 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
         destinatarios,
     );
 
-    const resultado = await enviarAvisoTelegram(
+    await crearLotes(
         avisoId,
-        aviso,
         destinatarios,
     );
-
-    const estadoEnvio =
-      resultado.errores === 0 ?
-        "completado" :
-        "completado_con_errores";
-
-    await db
-        .collection("avisos")
-        .doc(avisoId)
-        .update({
-          destinatarios: resultado.total,
-          enviados: resultado.enviados,
-          errores: resultado.errores,
-          estadoEnvio,
-          fechaActualizacion: new Date(),
-        });
-
-    return {
-      nuevo: true,
-      avisoId,
-      destinatarios: resultado.total,
-      enviados: resultado.enviados,
-      errores: resultado.errores,
-      estadoEnvio,
-    };
   } catch (error) {
     try {
       await db
@@ -602,6 +620,16 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
 
     throw error;
   }
+
+  return {
+    nuevo: true,
+    avisoId,
+    destinatarios: totalValidos,
+    enviados: 0,
+    errores: 0,
+    ambiguos: 0,
+    estadoEnvio: "pendiente",
+  };
 }
 
 /**
@@ -624,9 +652,11 @@ async function obtenerAvisos(limite = 50) {
 }
 
 module.exports = {
+  TAMANO_LOTE,
+  MARCADOR_ESTRUCTURA_LISTA,
   obtenerDestinatarios,
   crearDestinatarios,
-  enviarAvisoTelegram,
+  crearLotes,
   crearYEnviarAviso,
   obtenerAvisos,
 };
