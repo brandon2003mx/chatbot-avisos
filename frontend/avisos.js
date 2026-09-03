@@ -1,9 +1,13 @@
 requireCoordinador('login.html');
 bindLogout('logoutButton', 'login.html');
-authReady.then(user => {
+authReady.then(async user => {
   if (!user) return;
   document.getElementById('coordinator').textContent = `Coordinador: ${user.email}`;
   loadAvisos();
+  await loadCarreras();
+  if (reemplazaAvisoId) {
+    await precargarEdicion(reemplazaAvisoId);
+  }
 });
 
 const tipoSegmentacionSelect = document.getElementById('tipoSegmentacion');
@@ -70,11 +74,76 @@ tipoSegmentacionSelect.addEventListener('change', updateVisibleFields);
 carreraSelect.addEventListener('change', () => loadSemestres(carreraSelect.value));
 semestreSelect.addEventListener('change', () => loadGrupos(carreraSelect.value, semestreSelect.value));
 
+const formTitle = document.getElementById('formTitle');
+const editWarning = document.getElementById('editWarning');
+const submitAvisoButton = document.getElementById('submitAvisoButton');
+const tituloInput = document.getElementById('titulo');
+const contenidoInput = document.getElementById('contenido');
+
+let reemplazaAvisoId = new URLSearchParams(window.location.search).get('editar');
+
+function activarModoCreacion() {
+  reemplazaAvisoId = null;
+  window.history.replaceState(null, '', 'avisos.html');
+  formTitle.textContent = 'Redactar aviso';
+  editWarning.hidden = true;
+  submitAvisoButton.textContent = 'Enviar aviso';
+}
+
+function activarModoEdicion() {
+  formTitle.textContent = 'Editar y reenviar aviso';
+  editWarning.hidden = false;
+  submitAvisoButton.textContent = 'Guardar cambios y reenviar';
+}
+
+async function precargarEdicion(avisoId) {
+  try {
+    const { aviso } = await apiRequest(`/avisos/${encodeURIComponent(avisoId)}`);
+    activarModoEdicion();
+    tituloInput.value = aviso.titulo;
+    contenidoInput.value = aviso.contenido;
+    tipoSegmentacionSelect.value = aviso.tipoSegmentacion;
+    updateVisibleFields();
+    if (aviso.tipoSegmentacion !== 'todos' && aviso.carreraId) {
+      carreraSelect.value = aviso.carreraId;
+    }
+    if ((aviso.tipoSegmentacion === 'semestre' || aviso.tipoSegmentacion === 'grupo') && aviso.semestreId !== null) {
+      await loadSemestres(aviso.carreraId);
+      semestreSelect.value = String(aviso.semestreId);
+    }
+    if (aviso.tipoSegmentacion === 'grupo' && aviso.grupoId) {
+      await loadGrupos(aviso.carreraId, String(aviso.semestreId));
+      grupoSelect.value = aviso.grupoId;
+    }
+  } catch (error) {
+    showMessage(error.message);
+    activarModoCreacion();
+  }
+}
+
 function formatFecha(value) {
   if (!value) return '—';
   const seconds = value._seconds ?? value.seconds;
   const date = seconds !== undefined ? new Date(seconds * 1000) : new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX');
+}
+
+function formatSegmento(aviso) {
+  if (aviso.tipoSegmentacion === 'todos') return 'Todos los estudiantes';
+  if (aviso.tipoSegmentacion === 'carrera') {
+    return aviso.carreraNombre || SEGMENTO_LABELS.carrera;
+  }
+  if (aviso.tipoSegmentacion === 'semestre') {
+    return aviso.carreraNombre
+      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° semestre`
+      : SEGMENTO_LABELS.semestre;
+  }
+  if (aviso.tipoSegmentacion === 'grupo') {
+    return aviso.carreraNombre
+      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° · Grupo ${aviso.grupoNombre || aviso.grupoId}`
+      : SEGMENTO_LABELS.grupo;
+  }
+  return aviso.tipoSegmentacion;
 }
 
 function renderAvisos(avisos) {
@@ -85,7 +154,7 @@ function renderAvisos(avisos) {
   }
   tbody.innerHTML = avisos.map(aviso => `<tr>
     <td>${escapeHtml(aviso.titulo)}</td>
-    <td><span class="notice-badge">${escapeHtml(SEGMENTO_LABELS[aviso.tipoSegmentacion] || aviso.tipoSegmentacion)}</span></td>
+    <td><span class="notice-badge">${escapeHtml(formatSegmento(aviso))}</span></td>
     <td>${Number(aviso.destinatarios || 0)}</td>
     <td>${Number(aviso.enviados || 0)}</td>
     <td>${Number(aviso.errores || 0)}</td>
@@ -93,10 +162,25 @@ function renderAvisos(avisos) {
   </tr>`).join('');
 }
 
+const POLL_INTERVAL_MS = 5000;
+const ESTADOS_NO_TERMINALES = ['pendiente', 'procesando'];
+let pollTimeoutId = null;
+
+function tieneAvisosEnProceso(avisos) {
+  return avisos.some(aviso => ESTADOS_NO_TERMINALES.includes(aviso.estadoEnvio));
+}
+
 async function loadAvisos() {
+  if (pollTimeoutId) {
+    clearTimeout(pollTimeoutId);
+    pollTimeoutId = null;
+  }
   try {
     const { avisos } = await apiRequest('/avisos');
     renderAvisos(avisos);
+    if (tieneAvisosEnProceso(avisos)) {
+      pollTimeoutId = setTimeout(loadAvisos, POLL_INTERVAL_MS);
+    }
   } catch (error) {
     document.getElementById('avisosTable').innerHTML = '<tr><td colspan="6">No fue posible cargar los avisos.</td></tr>';
     showMessage(error.message);
@@ -106,6 +190,11 @@ async function loadAvisos() {
 document.getElementById('avisoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
+  const submitButton = formElement.querySelector('button[type="submit"]');
+  // Se genera una sola vez por intento de envío lógico: si en el
+  // futuro se agrega un reintento HTTP para esta misma operación,
+  // debe reutilizar esta misma clave, no generar una nueva.
+  const idempotencyKey = crypto.randomUUID();
   const form = new FormData(formElement);
   const tipoSegmentacion = form.get('tipoSegmentacion');
   const body = {
@@ -113,19 +202,32 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
     contenido: form.get('contenido'),
     tipoSegmentacion,
     carreraId: tipoSegmentacion === 'todos' ? null : carreraSelect.value,
-    semestre: (tipoSegmentacion === 'semestre' || tipoSegmentacion === 'grupo') ? semestreSelect.value : null,
+    semestreId: (tipoSegmentacion === 'semestre' || tipoSegmentacion === 'grupo') ? semestreSelect.value : null,
     grupoId: tipoSegmentacion === 'grupo' ? grupoSelect.value : null,
   };
+  if (reemplazaAvisoId) {
+    body.reemplazaAvisoId = reemplazaAvisoId;
+  }
+  submitButton.disabled = true;
   try {
-    const payload = await apiRequest('/avisos', { method: 'POST', body: JSON.stringify(body) });
-    showMessage(`Aviso enviado a ${payload.destinatarios} destinatario(s): ${payload.enviados} entregados, ${payload.errores} con error.`, 'success');
+    const payload = await apiRequest('/avisos', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(body),
+    });
+    const mensajeExito = reemplazaAvisoId
+      ? `Aviso corregido y puesto en procesamiento para ${payload.destinatarios} destinatario(s). El original quedó oculto de la lista.`
+      : `Aviso creado y puesto en procesamiento para ${payload.destinatarios} destinatario(s). El envío continúa en segundo plano.`;
+    showMessage(mensajeExito, 'success');
     formElement.reset();
+    activarModoCreacion();
     updateVisibleFields();
     loadAvisos();
   } catch (error) {
     showMessage(error.message);
+  } finally {
+    submitButton.disabled = false;
   }
 });
 
 updateVisibleFields();
-loadCarreras();

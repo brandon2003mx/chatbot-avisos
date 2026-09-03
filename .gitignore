@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 firebase-debug.log*
 firebase-debug.*.log*
+firestore-debug.log*
 
 # Firebase cache
 .firebase/
@@ -64,6 +65,9 @@ node_modules/
 
 # dotenv environment variables file
 .env
+
+# Firebase Functions: valores locales para secretos definidos con defineSecret()
+.secret.local
 
 # dataconnect generated files
 .dataconnect

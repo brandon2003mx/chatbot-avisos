@@ -1,5 +1,10 @@
 const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/https");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onTaskDispatched} = require("firebase-functions/v2/tasks");
+const {defineSecret} = require("firebase-functions/params");
+
+const {getFunctions} = require("firebase-admin/functions");
 
 const {
   obtenerCarreras,
@@ -21,7 +26,15 @@ const {
 const {
   crearYEnviarAviso,
   obtenerAvisos,
+  obtenerAviso,
+  ocultarAviso,
+  eliminarAviso,
+  MARCADOR_ESTRUCTURA_LISTA,
 } = require("./src/services/avisoService");
+
+const {
+  procesarLote,
+} = require("./src/services/avisoWorkerService");
 
 const {
   autenticarUsuario,
@@ -32,7 +45,30 @@ setGlobalOptions({
   maxInstances: 10,
 });
 
-exports.api = onRequest(async (req, res) => {
+const telegramBotToken = defineSecret("TELEGRAM_BOT_TOKEN");
+const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+
+// Configuración conservadora de la cola de envío de avisos. No
+// busca throughput máximo todavía: el objetivo de esta fase es
+// recuperación y ausencia de duplicados, no rendimiento.
+//
+// DISPATCH_DEADLINE_SECONDS se usa tanto como dispatchDeadlineSeconds
+// (cuánto espera Cloud Tasks la respuesta) como timeoutSeconds del
+// propio worker (cuánto lo deja correr Cloud Functions antes de
+// matarlo). Deben coincidir: si timeoutSeconds fuera menor, el
+// contenedor podría recibir SIGKILL antes de que Cloud Tasks
+// considere agotado el dispatch deadline, dejando este último sin
+// efecto real. 300s (5 min) es holgado para un lote de TAMANO_LOTE
+// incluso en el escenario "lento" medido en el Prompt 7C, sin
+// acercarse al máximo permitido para funciones de cola de tareas
+// (1800s, verificado contra los tipos instalados de firebase-functions).
+const DISPATCH_DEADLINE_SECONDS = 300;
+const MAX_INTENTOS_TAREA = 5;
+const BACKOFF_MINIMO_SEGUNDOS = 30;
+const MAX_DISPATCHES_CONCURRENTES = 5;
+const MAX_DISPATCHES_POR_SEGUNDO = 5;
+
+exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
 
@@ -124,31 +160,62 @@ exports.api = onRequest(async (req, res) => {
         throw error;
       }
 
+      const idempotencyKey = req.headers["idempotency-key"];
+
       const {
         titulo,
         contenido,
         tipoSegmentacion,
         carreraId,
-        semestre,
+        semestreId,
         grupoId,
+        reemplazaAvisoId,
       } = req.body;
 
-      const resultado = await crearYEnviarAviso({
-        titulo,
-        contenido,
-        tipoSegmentacion,
-        carreraId,
-        semestre:
-          semestre === undefined || semestre === null ?
-            null :
-            Number(semestre),
-        grupoId,
-        autorId: autenticacion.uid,
-      });
+      let resultado;
 
-      return res.status(201).json({
+      try {
+        resultado = await crearYEnviarAviso({
+          titulo,
+          contenido,
+          tipoSegmentacion,
+          carreraId,
+          semestreId:
+            semestreId === undefined || semestreId === null ?
+              null :
+              String(semestreId),
+          grupoId,
+          autorId: autenticacion.uid,
+        }, idempotencyKey);
+      } catch (error) {
+        if (error.idempotencyConflict) {
+          return res.status(409).json({
+            ok: false,
+            mensaje:
+              "La Idempotency-Key ya fue utilizada para otra solicitud.",
+          });
+        }
+
+        throw error;
+      }
+
+      if (resultado.nuevo && reemplazaAvisoId) {
+        try {
+          await ocultarAviso(reemplazaAvisoId);
+        } catch (error) {
+          console.error(
+              `No se pudo ocultar el aviso reemplazado ` +
+              `${reemplazaAvisoId}:`,
+              error.message,
+          );
+        }
+      }
+
+      const {nuevo, ...datosResultado} = resultado;
+
+      return res.status(nuevo ? 201 : 200).json({
         ok: true,
-        ...resultado,
+        ...datosResultado,
       });
     }
 
@@ -1016,6 +1083,140 @@ exports.api = onRequest(async (req, res) => {
       });
     }
 
+    const avisoIdMatch = ruta.match(
+        /^\/avisos\/([^/]+)$/,
+    );
+
+    if (req.method === "DELETE" && avisoIdMatch) {
+      const avisoId = avisoIdMatch[1];
+
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      let autenticacion;
+
+      try {
+        autenticacion = await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para eliminar avisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      await eliminarAviso(avisoId);
+
+      return res.status(200).json({
+        ok: true,
+        avisoId,
+        eliminadoPor: autenticacion.uid,
+      });
+    }
+
+    if (req.method === "GET" && avisoIdMatch) {
+      const avisoId = avisoIdMatch[1];
+
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      try {
+        await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para consultar avisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      const aviso = await obtenerAviso(avisoId);
+
+      if (!aviso) {
+        return res.status(404).json({
+          ok: false,
+          mensaje: "El aviso no existe.",
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        aviso,
+      });
+    }
+
     return res.status(404).json({
       ok: false,
       mensaje: "Ruta no encontrada",
@@ -1024,6 +1225,8 @@ exports.api = onRequest(async (req, res) => {
     console.error("Error en la API:", error);
 
     const erroresCliente = [
+      "El encabezado Idempotency-Key es obligatorio.",
+      "El encabezado Idempotency-Key no es válido.",
       "El título es obligatorio.",
       "El contenido es obligatorio.",
       "El tipo de segmentación no es válido.",
@@ -1059,6 +1262,8 @@ exports.api = onRequest(async (req, res) => {
       "La carrera está inactiva.",
       "El semestre está inactivo.",
       "El grupo está inactivo.",
+      "El aviso no existe.",
+      "El aviso todavía está en proceso de envío.",
     ];
 
     if (erroresCliente.includes(error.message)) {
@@ -1078,29 +1283,160 @@ exports.api = onRequest(async (req, res) => {
 /**
  * Recibe las actualizaciones de Telegram.
  */
-exports.telegramWebhook = onRequest(async (req, res) => {
-  try {
-    if (req.method !== "POST") {
-      return res.status(405).json({
-        ok: false,
-        mensaje: "Método no permitido",
-      });
-    }
+exports.telegramWebhook = onRequest(
+    {secrets: [telegramBotToken, telegramWebhookSecret]},
+    async (req, res) => {
+      try {
+        if (req.method !== "POST") {
+          return res.status(405).json({
+            ok: false,
+            mensaje: "Método no permitido",
+          });
+        }
 
-    await procesarActualizacion(req.body);
+        if (
+          req.get("X-Telegram-Bot-Api-Secret-Token") !==
+          telegramWebhookSecret.value()
+        ) {
+          return res.status(401).json({
+            ok: false,
+            mensaje: "No autorizado",
+          });
+        }
 
-    return res.status(200).json({
-      ok: true,
-    });
-  } catch (error) {
-    console.error(
-        "Error procesando actualización de Telegram:",
-        error,
-    );
+        await procesarActualizacion(req.body);
 
-    return res.status(500).json({
-      ok: false,
-      mensaje: "Error procesando actualización",
-    });
-  }
-});
+        return res.status(200).json({
+          ok: true,
+        });
+      } catch (error) {
+        console.error(
+            "Error procesando actualización de Telegram:",
+            error,
+        );
+
+        return res.status(500).json({
+          ok: false,
+          mensaje: "Error procesando actualización",
+        });
+      }
+    },
+);
+
+/**
+ * Encola las Cloud Tasks de TODOS los lotes de un aviso, en cuanto
+ * la estructura completa de lotes queda confirmada en Firestore.
+ *
+ * Se dispara sobre la creación del documento marcador
+ * `MARCADOR_ESTRUCTURA_LISTA` (no sobre la creación de cada lote
+ * individual) a propósito: `crearLotes()` solo escribe ese marcador
+ * después de que TODOS los commits de lotes hayan resuelto con
+ * éxito. Si la creación de la estructura falla a mitad de camino
+ * (algunos lotes creados, otros no), el marcador nunca se crea, así
+ * que este trigger nunca se dispara para ese aviso y ningún lote
+ * — ni siquiera los que sí llegaron a crearse — puede empezar a
+ * encolarse ni procesarse. Esto evita la ventana en la que un
+ * aviso podía terminar marcado "fallido" mientras algunos de sus
+ * lotes ya estaban siendo enviados.
+ *
+ * Cualquier otro documento creado bajo lotes/ (los lotes en sí,
+ * con ID `lote-{n}`) se ignora aquí: nunca dispara el encolado por
+ * sí solo.
+ *
+ * Los nombres de tarea (`avisos-{avisoId}-lote-{indice}`) son
+ * deterministas y se calculan sin necesidad de leer cada documento
+ * de lote, así que un reintento de este trigger (`retry: true`)
+ * simplemente vuelve a intentar encolar las mismas N tareas: las ya
+ * creadas responden `ALREADY_EXISTS` (tratado como éxito lógico) y
+ * las que faltaban se crean. Cualquier otro error se relanza para
+ * que la plataforma reintente el trigger completo.
+ */
+exports.encolarLoteAviso = onDocumentCreated(
+    {
+      document: "avisos/{avisoId}/lotes/{loteId}",
+      retry: true,
+    },
+    async (event) => {
+      const {avisoId, loteId} = event.params;
+
+      if (loteId !== MARCADOR_ESTRUCTURA_LISTA) {
+        return;
+      }
+
+      if (!event.data) {
+        return;
+      }
+
+      const marcador = event.data.data();
+      const totalLotes = marcador.totalLotes || 0;
+
+      const cola = getFunctions().taskQueue("procesarLoteAviso");
+
+      for (let indice = 0; indice < totalLotes; indice++) {
+        const loteIdActual = `lote-${indice}`;
+        const taskName = `avisos-${avisoId}-lote-${indice}`;
+
+        try {
+          await cola.enqueue(
+              {avisoId, loteId: loteIdActual},
+              {
+                id: taskName,
+                dispatchDeadlineSeconds: DISPATCH_DEADLINE_SECONDS,
+              },
+          );
+        } catch (error) {
+          if (error.code === "functions/task-already-exists") {
+            continue;
+          }
+
+          throw error;
+        }
+      }
+    },
+);
+
+/**
+ * Worker que procesa un lote de destinatarios de un aviso.
+ *
+ * Se invoca exclusivamente vía Cloud Tasks (nunca como un endpoint
+ * HTTP público): la autenticación OIDC de la tarea la valida el
+ * propio runtime de onTaskDispatched antes de ejecutar el handler.
+ * Asume ejecución at-least-once: toda la lógica de idempotencia
+ * (claim por destinatario, cierre de lote una sola vez) vive en
+ * avisoWorkerService.js.
+ *
+ * timeoutSeconds se fija igual a DISPATCH_DEADLINE_SECONDS a
+ * propósito: sin esto, el worker heredaría el timeout por defecto
+ * de Cloud Functions 2nd gen (60s), muy por debajo de lo que
+ * dispatchDeadlineSeconds le permite a Cloud Tasks esperar, y el
+ * contenedor podría recibir SIGKILL antes de que ese deadline
+ * tenga oportunidad de cumplir su función.
+ */
+exports.procesarLoteAviso = onTaskDispatched(
+    {
+      secrets: [telegramBotToken],
+      timeoutSeconds: DISPATCH_DEADLINE_SECONDS,
+      retryConfig: {
+        maxAttempts: MAX_INTENTOS_TAREA,
+        minBackoffSeconds: BACKOFF_MINIMO_SEGUNDOS,
+      },
+      rateLimits: {
+        maxConcurrentDispatches: MAX_DISPATCHES_CONCURRENTES,
+        maxDispatchesPerSecond: MAX_DISPATCHES_POR_SEGUNDO,
+      },
+    },
+    async (request) => {
+      const {avisoId, loteId} = request.data || {};
+
+      if (!avisoId || !loteId) {
+        console.error(
+            "Payload inválido para procesarLoteAviso:",
+            request.data,
+        );
+
+        return;
+      }
+
+      await procesarLote(avisoId, loteId);
+    },
+);

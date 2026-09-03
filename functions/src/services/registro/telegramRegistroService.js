@@ -30,6 +30,23 @@ function obtenerNombre(mensaje) {
 }
 
 /**
+ * Obtiene el número visible de un semestre a partir de su ID.
+ *
+ * @param {string} carreraId ID de la carrera.
+ * @param {string} semestreId ID del semestre.
+ * @return {Promise<number|string>}
+ */
+async function obtenerNumeroSemestre(carreraId, semestreId) {
+  const semestres = await obtenerSemestres(carreraId);
+
+  const semestre = semestres.find(
+      (item) => String(item.id) === String(semestreId),
+  );
+
+  return semestre ? semestre.numero : semestreId;
+}
+
+/**
  * Muestra la información actual del estudiante.
  *
  * @param {string} telegramId ID de Telegram.
@@ -70,11 +87,16 @@ async function mostrarInfo(telegramId) {
     nombreCarrera = carrera.nombre;
   }
 
+  const numeroSemestre = await obtenerNumeroSemestre(
+      estudiante.carreraId,
+      estudiante.semestreId,
+  );
+
   await enviarMensaje(
       telegramId,
       "👤 Mi información\n\n" +
       `🎓 Carrera: ${nombreCarrera}\n` +
-      `📚 Semestre: ${estudiante.semestre}\n` +
+      `📚 Semestre: ${numeroSemestre}\n` +
       `👥 Grupo: ${estudiante.grupoId}`,
   );
 }
@@ -306,7 +328,7 @@ async function guardarRegistroNuevo(
         correoInstitucional: "",
         correoVerificado: false,
         carreraId,
-        semestre: Number(semestreId),
+        semestreId: String(semestreId),
         grupoId,
         fcmToken: "",
         estadoRegistro: "completo",
@@ -322,11 +344,16 @@ async function guardarRegistroNuevo(
     nombreCarrera = carrera.nombre;
   }
 
+  const numeroSemestre = await obtenerNumeroSemestre(
+      carreraId,
+      semestreId,
+  );
+
   await enviarMensaje(
       telegramId,
       "🎉 ¡Registro completado!\n\n" +
       `🎓 Carrera: ${nombreCarrera}\n` +
-      `📚 Semestre: ${semestreId}\n` +
+      `📚 Semestre: ${numeroSemestre}\n` +
       `👥 Grupo: ${grupoId}\n\n` +
       "Ya puedes recibir los avisos académicos del ITTG.",
   );
@@ -371,7 +398,7 @@ async function guardarModificacion(
         correoVerificado:
           estudiante.correoVerificado,
         carreraId,
-        semestre: Number(semestreId),
+        semestreId: String(semestreId),
         grupoId,
         fcmToken: estudiante.fcmToken,
         estadoRegistro: "completo",
@@ -387,11 +414,16 @@ async function guardarModificacion(
     nombreCarrera = carrera.nombre;
   }
 
+  const numeroSemestre = await obtenerNumeroSemestre(
+      carreraId,
+      semestreId,
+  );
+
   await enviarMensaje(
       telegramId,
       "✅ Información actualizada.\n\n" +
       `🎓 Carrera: ${nombreCarrera}\n` +
-      `📚 Semestre: ${semestreId}\n` +
+      `📚 Semestre: ${numeroSemestre}\n` +
       `👥 Grupo: ${grupoId}`,
   );
 }
