@@ -31,7 +31,8 @@
     </div>
     <nav class="top-nav" aria-label="Navegación principal">
       <a href="index.html">Inicio</a>
-      <a class="active" href="avisos.html">Avisos</a>
+      <a class="active" href="avisos.html">Redactar Aviso</a>
+      <a href="administrar_avisos.html">Gestión de Avisos</a>
     </nav>
   </header>
 
@@ -39,7 +40,8 @@
     <div id="status" class="message" role="status" hidden></div>
 
     <section class="panel">
-      <h2>Redactar aviso</h2>
+      <h2 id="formTitle">Redactar aviso</h2>
+      <p id="editWarning" class="form-warning" hidden>Estás corrigiendo un aviso ya enviado: al guardar se creará y enviará un aviso nuevo a los destinatarios que coincidan con la segmentación, y el original quedará oculto de la lista.</p>
       <form id="avisoForm" class="form-grid">
         <div>
           <label for="titulo">Título del aviso</label>
@@ -77,7 +79,7 @@
           </select>
         </div>
         <div class="form-action">
-          <button class="primary-button" type="submit">Enviar aviso</button>
+          <button id="submitAvisoButton" class="primary-button" type="submit">Enviar aviso</button>
         </div>
       </form>
     </section>
@@ -89,7 +91,7 @@
           <thead>
             <tr>
               <th>Título</th>
-              <th>Dirigido a</th>
+              <th>Segmento</th>
               <th>Destinatarios</th>
               <th>Enviados</th>
               <th>Errores</th>

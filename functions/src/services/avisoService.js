@@ -98,41 +98,56 @@ function validarDatosAviso(aviso) {
 }
 
 /**
- * Valida que la segmentación corresponda
- * con datos académicos activos.
+ * Valida que la segmentación corresponda con datos académicos
+ * activos, y devuelve una foto de los nombres/números legibles en
+ * ese momento (para poder mostrar más adelante a qué segmento
+ * específico se envió un aviso, aunque la carrera/semestre/grupo
+ * cambie de nombre o se desactive después).
  *
  * @param {Object} aviso Datos del aviso.
- * @return {Promise<void>}
+ * @return {Promise<Object>} {carreraNombre, semestreNumero, grupoNombre}
  */
 async function validarSegmentacion(aviso) {
+  const descripcion = {
+    carreraNombre: null,
+    semestreNumero: null,
+    grupoNombre: null,
+  };
+
   if (aviso.tipoSegmentacion === "todos") {
-    return;
+    return descripcion;
   }
+
+  const carrera = await validarCarreraActiva(
+      aviso.carreraId,
+  );
+
+  descripcion.carreraNombre = carrera.nombre;
 
   if (aviso.tipoSegmentacion === "carrera") {
-    await validarCarreraActiva(
-        aviso.carreraId,
-    );
-
-    return;
+    return descripcion;
   }
+
+  const semestre = await validarSemestreActivo(
+      aviso.carreraId,
+      String(aviso.semestreId),
+  );
+
+  descripcion.semestreNumero = semestre.numero;
 
   if (aviso.tipoSegmentacion === "semestre") {
-    await validarSemestreActivo(
-        aviso.carreraId,
-        String(aviso.semestreId),
-    );
-
-    return;
+    return descripcion;
   }
 
-  if (aviso.tipoSegmentacion === "grupo") {
-    await validarGrupoActivo(
-        aviso.carreraId,
-        String(aviso.semestreId),
-        aviso.grupoId,
-    );
-  }
+  const grupo = await validarGrupoActivo(
+      aviso.carreraId,
+      String(aviso.semestreId),
+      aviso.grupoId,
+  );
+
+  descripcion.grupoNombre = grupo.nombre;
+
+  return descripcion;
 }
 
 const UUID_V4_REGEX =
@@ -249,6 +264,8 @@ class IdempotencyKeyExistsError extends Error {
  * @param {number} totalDestinatarios Cantidad de destinatarios válidos.
  * @param {number} totalLotes Cantidad de lotes en los que se dividirá
  *   el envío.
+ * @param {Object} descripcionSegmento {carreraNombre, semestreNumero,
+ *   grupoNombre} en el momento de la creación.
  * @return {Promise<string>} ID del aviso reclamado/creado.
  */
 async function reclamarIdempotencyKeyYCrearAviso(
@@ -257,6 +274,7 @@ async function reclamarIdempotencyKeyYCrearAviso(
     requestHash,
     totalDestinatarios,
     totalLotes,
+    descripcionSegmento,
 ) {
   const avisoRef = db.collection("avisos").doc();
 
@@ -289,6 +307,9 @@ async function reclamarIdempotencyKeyYCrearAviso(
       carreraId: avisoNormalizado.carreraId,
       semestreId: avisoNormalizado.semestreId,
       grupoId: avisoNormalizado.grupoId,
+      carreraNombre: descripcionSegmento.carreraNombre,
+      semestreNumero: descripcionSegmento.semestreNumero,
+      grupoNombre: descripcionSegmento.grupoNombre,
       autorId: avisoNormalizado.autorId,
       activo: true,
       estadoEnvio: "pendiente",
@@ -549,7 +570,7 @@ async function crearLotes(avisoId, estudiantes) {
 async function crearYEnviarAviso(aviso, idempotencyKey) {
   validarIdempotencyKey(idempotencyKey);
   validarDatosAviso(aviso);
-  await validarSegmentacion(aviso);
+  const descripcionSegmento = await validarSegmentacion(aviso);
 
   const destinatarios = await obtenerDestinatarios(
       aviso,
@@ -579,6 +600,7 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
         requestHash,
         totalValidos,
         totalLotes,
+        descripcionSegmento,
     );
   } catch (error) {
     if (error instanceof IdempotencyKeyExistsError) {
@@ -633,7 +655,7 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
 }
 
 /**
- * Obtiene los avisos más recientes.
+ * Obtiene los avisos activos más recientes.
  *
  * @param {number} limite Número máximo de avisos.
  * @return {Promise<Array>}
@@ -641,6 +663,7 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
 async function obtenerAvisos(limite = 50) {
   const snapshot = await db
       .collection("avisos")
+      .where("activo", "==", true)
       .orderBy("fechaCreacion", "desc")
       .limit(limite)
       .get();
@@ -651,6 +674,94 @@ async function obtenerAvisos(limite = 50) {
   }));
 }
 
+/**
+ * Estados de envío en los que un aviso todavía puede tener
+ * Cloud Tasks en vuelo, por lo que no es seguro editarlo ni
+ * eliminarlo: un worker podría intentar actualizar un documento
+ * ya borrado, o sobrescribir una edición a medio envío.
+ *
+ * @type {Array<string>}
+ */
+const ESTADOS_EN_PROCESO = ["pendiente", "procesando"];
+
+/**
+ * Obtiene un aviso existente y valida que ya haya terminado de
+ * enviarse, para permitir editarlo o eliminarlo con seguridad.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<FirebaseFirestore.DocumentReference>} Referencia
+ *   al documento del aviso, ya validado.
+ */
+async function obtenerAvisoRefTerminal(avisoId) {
+  const avisoRef = db.collection("avisos").doc(avisoId);
+
+  const avisoSnap = await avisoRef.get();
+
+  if (!avisoSnap.exists) {
+    throw new Error("El aviso no existe.");
+  }
+
+  if (ESTADOS_EN_PROCESO.includes(avisoSnap.data().estadoEnvio)) {
+    throw new Error(
+        "El aviso todavía está en proceso de envío.",
+    );
+  }
+
+  return avisoRef;
+}
+
+/**
+ * Oculta un aviso (borrado lógico). Se usa internamente cuando un
+ * aviso corregido reemplaza a uno anterior: el original deja de
+ * aparecer en el listado, pero permanece en Firestore.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<void>}
+ */
+async function ocultarAviso(avisoId) {
+  const avisoRef = await obtenerAvisoRefTerminal(avisoId);
+
+  await avisoRef.update({
+    activo: false,
+    fechaActualizacion: new Date(),
+  });
+}
+
+/**
+ * Elimina un aviso junto con sus subcolecciones (destinatarios y
+ * lotes), de forma permanente e irreversible. No afecta los
+ * mensajes ya entregados por Telegram: solo borra el registro en
+ * Firestore.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<void>}
+ */
+async function eliminarAviso(avisoId) {
+  const avisoRef = await obtenerAvisoRefTerminal(avisoId);
+
+  await db.recursiveDelete(avisoRef);
+}
+
+/**
+ * Obtiene un aviso por su ID, sin filtrar por estado ni por
+ * "activo". Se usa para precargar el formulario de edición.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<Object|null>}
+ */
+async function obtenerAviso(avisoId) {
+  const snap = await db.collection("avisos").doc(avisoId).get();
+
+  if (!snap.exists) {
+    return null;
+  }
+
+  return {
+    id: snap.id,
+    ...snap.data(),
+  };
+}
+
 module.exports = {
   TAMANO_LOTE,
   MARCADOR_ESTRUCTURA_LISTA,
@@ -659,4 +770,7 @@ module.exports = {
   crearLotes,
   crearYEnviarAviso,
   obtenerAvisos,
+  obtenerAviso,
+  ocultarAviso,
+  eliminarAviso,
 };

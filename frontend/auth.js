@@ -13,12 +13,23 @@ async function apiRequest(path, options = {}) {
   return payload;
 }
 
+const MESSAGE_DURATION_MS = 6000;
+let messageTimeoutId = null;
+
 function showMessage(message, type = 'error') {
   const element = document.getElementById('status');
   if (!element) return;
+  if (messageTimeoutId) {
+    clearTimeout(messageTimeoutId);
+    messageTimeoutId = null;
+  }
   element.className = `message ${type}`;
   element.textContent = message;
   element.hidden = false;
+  messageTimeoutId = setTimeout(() => {
+    element.hidden = true;
+    messageTimeoutId = null;
+  }, MESSAGE_DURATION_MS);
 }
 
 function bindLogout(buttonId, redirect) {

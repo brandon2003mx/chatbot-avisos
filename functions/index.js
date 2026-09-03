@@ -26,6 +26,9 @@ const {
 const {
   crearYEnviarAviso,
   obtenerAvisos,
+  obtenerAviso,
+  ocultarAviso,
+  eliminarAviso,
   MARCADOR_ESTRUCTURA_LISTA,
 } = require("./src/services/avisoService");
 
@@ -166,6 +169,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         carreraId,
         semestreId,
         grupoId,
+        reemplazaAvisoId,
       } = req.body;
 
       let resultado;
@@ -193,6 +197,18 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         }
 
         throw error;
+      }
+
+      if (resultado.nuevo && reemplazaAvisoId) {
+        try {
+          await ocultarAviso(reemplazaAvisoId);
+        } catch (error) {
+          console.error(
+              `No se pudo ocultar el aviso reemplazado ` +
+              `${reemplazaAvisoId}:`,
+              error.message,
+          );
+        }
       }
 
       const {nuevo, ...datosResultado} = resultado;
@@ -1067,6 +1083,140 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       });
     }
 
+    const avisoIdMatch = ruta.match(
+        /^\/avisos\/([^/]+)$/,
+    );
+
+    if (req.method === "DELETE" && avisoIdMatch) {
+      const avisoId = avisoIdMatch[1];
+
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      let autenticacion;
+
+      try {
+        autenticacion = await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para eliminar avisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      await eliminarAviso(avisoId);
+
+      return res.status(200).json({
+        ok: true,
+        avisoId,
+        eliminadoPor: autenticacion.uid,
+      });
+    }
+
+    if (req.method === "GET" && avisoIdMatch) {
+      const avisoId = avisoIdMatch[1];
+
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      try {
+        await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para consultar avisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      const aviso = await obtenerAviso(avisoId);
+
+      if (!aviso) {
+        return res.status(404).json({
+          ok: false,
+          mensaje: "El aviso no existe.",
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        aviso,
+      });
+    }
+
     return res.status(404).json({
       ok: false,
       mensaje: "Ruta no encontrada",
@@ -1112,6 +1262,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "La carrera está inactiva.",
       "El semestre está inactivo.",
       "El grupo está inactivo.",
+      "El aviso no existe.",
+      "El aviso todavía está en proceso de envío.",
     ];
 
     if (erroresCliente.includes(error.message)) {

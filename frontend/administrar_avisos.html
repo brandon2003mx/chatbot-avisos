@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Gestión de avisos institucionales del ITTG">
+  <title>Gestión de Avisos | ITTG</title>
+  <link rel="icon" href="descarga.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
+  <script src="/__/firebase/init.js" defer></script>
+  <script src="firebase-init.js" defer></script>
+  <script src="auth.js" defer></script>
+  <script src="administrar_avisos.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-top">
+      <div class="brand">
+        <img class="brand-logo" src="descarga.png" alt="Logotipo del Instituto Tecnológico de Tuxtla Gutiérrez">
+        <div>
+          <p class="eyebrow">Difusión institucional</p>
+          <h1>Gestión de Avisos</h1>
+          <p class="brand-subtitle">Consulta, edita o elimina avisos publicados</p>
+        </div>
+      </div>
+      <div class="user-info">
+        <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+    <nav class="top-nav" aria-label="Navegación principal">
+      <a href="index.html">Inicio</a>
+      <a href="avisos.html">Redactar Aviso</a>
+      <a class="active" href="administrar_avisos.html">Gestión de Avisos</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="status" class="message" role="status" hidden></div>
+
+    <section class="panel notice-manager" aria-labelledby="noticeManagerTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Administración</p>
+          <h2 id="noticeManagerTitle">Avisos redactados</h2>
+          <p>Edita (y reenvía) o elimina permanentemente avisos que ya terminaron de enviarse. Mientras un aviso está pendiente o procesando, sus acciones quedan bloqueadas.</p>
+        </div>
+        <button id="manageRefreshButton" class="button-outline dark" type="button">Actualizar lista</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Aviso</th>
+              <th>Segmento</th>
+              <th>Errores</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="managedNotices">
+            <tr><td colspan="4" class="table-empty">Cargando avisos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
