@@ -2,6 +2,7 @@ const {
   obtenerEstudiantePorTelegramId,
   guardarEstudiante,
 } = require("../estudianteService");
+const {db} = require("../../config/firebase");
 
 const {
   obtenerCarreras,
@@ -545,6 +546,24 @@ async function procesarCallbackQuery(
 
   const datos = callbackQuery.data || "";
   const partes = datos.split(":");
+
+  if (partes[0] === "lectura" && partes.length === 2) {
+    const avisoId = partes[1];
+    const destinatario = db.collection("avisos").doc(avisoId)
+        .collection("destinatarios").doc(telegramId);
+    const destinatarioSnapshot = await destinatario.get();
+
+    if (!destinatarioSnapshot.exists) {
+      await enviarMensaje(telegramId, "No se encontró este aviso.");
+      return;
+    }
+
+    await destinatario.set({
+      leido: true,
+      fechaLectura: new Date(),
+    }, {merge: true});
+    return;
+  }
 
   if (datos === "registro:iniciar") {
     const nombre = obtenerNombre(

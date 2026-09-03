@@ -5,6 +5,7 @@ const {onTaskDispatched} = require("firebase-functions/v2/tasks");
 const {defineSecret} = require("firebase-functions/params");
 
 const {getFunctions} = require("firebase-admin/functions");
+const {db} = require("./src/config/firebase");
 
 const {
   obtenerCarreras,
@@ -71,6 +72,45 @@ const MAX_DISPATCHES_POR_SEGUNDO = 5;
 exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
+
+    if (req.method === "GET" && ruta === "/dashboard") {
+      const encabezado = req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      await autenticarConRol(
+          encabezado.substring(7),
+          ["administrador", "coordinador"],
+      );
+
+      const [avisos, estudiantesSnapshot, destinatariosSnapshot] =
+        await Promise.all([
+          obtenerAvisos(),
+          db.collection("estudiantes").get(),
+          db.collectionGroup("destinatarios").get(),
+        ]);
+      const lecturas = destinatariosSnapshot.docs.filter(
+          (doc) => doc.data().leido === true,
+      ).length;
+
+      return res.status(200).json({
+        ok: true,
+        metrics: {
+          total_notices: avisos.length,
+          total_students: estudiantesSnapshot.size,
+          total_recipients: destinatariosSnapshot.size,
+          total_reads: lecturas,
+        },
+        topNotices: avisos.slice(0, 5),
+        segments: [],
+        careers: [],
+      });
+    }
 
     if (req.method === "GET" && ruta === "/carreras") {
       const carreras = await obtenerCarreras();
