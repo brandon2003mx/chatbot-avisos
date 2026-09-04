@@ -1,3 +1,5 @@
+const {db} = require("../../config/firebase");
+
 const {
   obtenerEstudiantePorTelegramId,
   guardarEstudiante,
@@ -16,7 +18,9 @@ const {
 } = require("../telegramService");
 
 /**
- * Obtiene el nombre del usuario desde Telegram.
+ * Obtiene el nombre del usuario desde Telegram, solo para el
+ * saludo de bienvenida (nunca se guarda como el nombre del
+ * registro: eso el estudiante debe escribirlo él mismo).
  *
  * @param {Object} mensaje Mensaje de Telegram.
  * @return {string}
@@ -27,6 +31,128 @@ function obtenerNombre(mensaje) {
   }
 
   return "Estudiante";
+}
+
+/**
+ * Acepta letras (incluye acentos y ñ), espacios, apóstrofes y
+ * guiones, para cubrir nombres compuestos y apellidos con guión.
+ *
+ * @type {RegExp}
+ */
+const NOMBRE_COMPLETO_REGEX =
+  /^[a-zA-ZÀ-ÖØ-öø-ÿ]+(?:[ '-][a-zA-ZÀ-ÖØ-öø-ÿ]+)*$/;
+
+/**
+ * Valida y normaliza un nombre completo escrito por el estudiante.
+ * Exige al menos nombre y un apellido (dos palabras), solo letras.
+ *
+ * @param {string} texto Texto recibido de Telegram.
+ * @return {string|null} Nombre normalizado, o null si no es válido.
+ */
+function validarNombreCompleto(texto) {
+  const limpio = (texto || "")
+      .trim()
+      .replace(/\s+/g, " ");
+
+  if (limpio.length < 3 || limpio.length > 80) {
+    return null;
+  }
+
+  if (!NOMBRE_COMPLETO_REGEX.test(limpio)) {
+    return null;
+  }
+
+  if (limpio.split(" ").length < 2) {
+    return null;
+  }
+
+  return limpio;
+}
+
+/**
+ * Guarda el avance de un registro que todavía no está completo:
+ * primero solo la etapa ("nombre"), y luego el nombre completo ya
+ * validado mientras el estudiante elige carrera/semestre/grupo.
+ * Vive en una colección aparte de `estudiantes`: así ese registro
+ * solo se crea hasta que el flujo completo termine, y nunca
+ * aparece como destinatario de avisos a medio registrar.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {Object} datos {etapa, nombre?}.
+ * @return {Promise<void>}
+ */
+async function guardarRegistroPendiente(telegramId, datos) {
+  await db
+      .collection("registrosPendientes")
+      .doc(String(telegramId))
+      .set({
+        ...datos,
+        fechaInicio: new Date(),
+      });
+}
+
+/**
+ * Obtiene la selección pendiente de carrera/semestre/grupo de un
+ * registro que solo le falta el nombre completo.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @return {Promise<Object|null>}
+ */
+async function obtenerRegistroPendiente(telegramId) {
+  const documento = await db
+      .collection("registrosPendientes")
+      .doc(String(telegramId))
+      .get();
+
+  if (!documento.exists) {
+    return null;
+  }
+
+  return documento.data();
+}
+
+/**
+ * Elimina la selección pendiente, una vez que el registro ya
+ * quedó completo (o para permitir reiniciarlo desde cero).
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @return {Promise<void>}
+ */
+async function eliminarRegistroPendiente(telegramId) {
+  await db
+      .collection("registrosPendientes")
+      .doc(String(telegramId))
+      .delete();
+}
+
+/**
+ * Retoma un registro pendiente donde se quedó: si todavía falta
+ * el nombre, lo vuelve a pedir; si el nombre ya se capturó, vuelve
+ * a mostrar la selección de carrera (los pasos con botones nunca
+ * se persisten, así que siempre se retoma desde ahí).
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {Object} pendiente {etapa, nombre?}.
+ * @return {Promise<void>}
+ */
+async function continuarRegistroPendiente(
+    telegramId,
+    pendiente,
+) {
+  if (pendiente.etapa === "nombre") {
+    await enviarMensaje(
+        telegramId,
+        "✍️ Escribe tu nombre completo (nombre y apellidos) " +
+        "para continuar tu registro.",
+    );
+
+    return;
+  }
+
+  await mostrarCarreras(
+      telegramId,
+      false,
+  );
 }
 
 /**
@@ -58,6 +184,19 @@ async function mostrarInfo(telegramId) {
   );
 
   if (!estudiante) {
+    const pendiente = await obtenerRegistroPendiente(
+        telegramId,
+    );
+
+    if (pendiente) {
+      await continuarRegistroPendiente(
+          telegramId,
+          pendiente,
+      );
+
+      return;
+    }
+
     await enviarMensaje(
         telegramId,
         "Aún no estás registrado.\n\n" +
@@ -290,6 +429,104 @@ async function mostrarGrupos(
 }
 
 /**
+ * Termina un registro nuevo: usa el nombre ya capturado en el
+ * registro pendiente junto con la carrera/semestre/grupo recién
+ * elegidos. Si el pendiente no existe o no tiene nombre (por
+ * ejemplo, el estudiante llegó aquí con un botón viejo de un
+ * intento anterior), le pide reiniciar con /start en vez de
+ * fallar.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} carreraId ID de la carrera.
+ * @param {string} semestreId ID del semestre.
+ * @param {string} grupoId ID del grupo.
+ * @return {Promise<void>}
+ */
+async function finalizarRegistroNuevo(
+    telegramId,
+    carreraId,
+    semestreId,
+    grupoId,
+) {
+  const pendiente = await obtenerRegistroPendiente(
+      telegramId,
+  );
+
+  if (!pendiente || !pendiente.nombre) {
+    await enviarMensaje(
+        telegramId,
+        "Tu registro ya no es válido. " +
+        "Usa /start para comenzar de nuevo.",
+    );
+
+    return;
+  }
+
+  await guardarRegistroNuevo(
+      telegramId,
+      carreraId,
+      semestreId,
+      grupoId,
+      pendiente.nombre,
+  );
+
+  await eliminarRegistroPendiente(telegramId);
+}
+
+/**
+ * Procesa el texto que el estudiante escribió mientras tenía un
+ * registro pendiente. Solo se interpreta como nombre completo en
+ * la etapa "nombre"; en cualquier otra etapa (ya eligiendo
+ * carrera/semestre/grupo con botones) se le recuerda usar los
+ * botones en vez de escribir.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} texto Texto recibido de Telegram.
+ * @param {Object} pendiente {etapa, nombre?}.
+ * @return {Promise<void>}
+ */
+async function procesarTextoRegistro(
+    telegramId,
+    texto,
+    pendiente,
+) {
+  if (pendiente.etapa !== "nombre") {
+    await enviarMensaje(
+        telegramId,
+        "Usa los botones para continuar tu registro.",
+    );
+
+    return;
+  }
+
+  const nombre = validarNombreCompleto(texto);
+
+  if (!nombre) {
+    await enviarMensaje(
+        telegramId,
+        "Ese nombre no parece válido. Escribe tu nombre " +
+        "completo (nombre y al menos un apellido), usando " +
+        "solo letras.",
+    );
+
+    return;
+  }
+
+  await guardarRegistroPendiente(
+      telegramId,
+      {
+        etapa: "carrera",
+        nombre,
+      },
+  );
+
+  await mostrarCarreras(
+      telegramId,
+      false,
+  );
+}
+
+/**
  * Guarda un registro nuevo.
  *
  * @param {string} telegramId ID de Telegram.
@@ -429,16 +666,13 @@ async function guardarModificacion(
 }
 
 /**
- * Inicia el registro nuevo.
+ * Inicia el registro nuevo: pide el nombre completo primero,
+ * antes de mostrar la selección de carrera/semestre/grupo.
  *
  * @param {string} telegramId ID de Telegram.
- * @param {string} nombre Nombre del usuario.
  * @return {Promise<void>}
  */
-async function iniciarRegistroNuevo(
-    telegramId,
-    nombre,
-) {
+async function iniciarRegistroNuevo(telegramId) {
   const estudiante =
     await obtenerEstudiantePorTelegramId(
         telegramId,
@@ -454,9 +688,15 @@ async function iniciarRegistroNuevo(
     return;
   }
 
-  await mostrarCarreras(
+  await guardarRegistroPendiente(
       telegramId,
-      false,
+      {etapa: "nombre"},
+  );
+
+  await enviarMensaje(
+      telegramId,
+      "✍️ Primero, escribe tu nombre completo " +
+      "(nombre y apellidos):",
   );
 }
 
@@ -547,15 +787,7 @@ async function procesarCallbackQuery(
   const partes = datos.split(":");
 
   if (datos === "registro:iniciar") {
-    const nombre = obtenerNombre(
-        callbackQuery.message,
-    );
-
-    await iniciarRegistroNuevo(
-        telegramId,
-        nombre,
-    );
-
+    await iniciarRegistroNuevo(telegramId);
     return;
   }
 
@@ -650,18 +882,11 @@ async function procesarCallbackQuery(
     partes[1] === "grupo" &&
     partes.length === 5
   ) {
-    const mensaje =
-      callbackQuery.message;
-
-    const nombre =
-      obtenerNombre(mensaje);
-
-    await guardarRegistroNuevo(
+    await finalizarRegistroNuevo(
         telegramId,
         partes[2],
         partes[3],
         partes[4],
-        nombre,
     );
 
     return;
@@ -731,17 +956,31 @@ async function procesarStart(mensaje) {
         telegramId,
     );
 
-  if (!estudiante) {
-    await mostrarBienvenida(
+  if (estudiante) {
+    await mostrarInfo(
         telegramId,
-        nombre,
     );
 
     return;
   }
 
-  await mostrarInfo(
+  const pendiente =
+    await obtenerRegistroPendiente(
+        telegramId,
+    );
+
+  if (pendiente) {
+    await continuarRegistroPendiente(
+        telegramId,
+        pendiente,
+    );
+
+    return;
+  }
+
+  await mostrarBienvenida(
       telegramId,
+      nombre,
   );
 }
 
@@ -839,6 +1078,20 @@ async function procesarActualizacion(update) {
 
   if (texto === "/registro") {
     await procesarRegistro(telegramId);
+    return;
+  }
+
+  const pendiente = await obtenerRegistroPendiente(
+      telegramId,
+  );
+
+  if (pendiente) {
+    await procesarTextoRegistro(
+        telegramId,
+        texto,
+        pendiente,
+    );
+
     return;
   }
 
