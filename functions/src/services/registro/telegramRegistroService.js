@@ -1,11 +1,11 @@
 const {db} = require("../../config/firebase");
+const {FieldValue} = require("firebase-admin/firestore");
 
 const {
   obtenerEstudiantePorTelegramId,
   obtenerEstudiantePorNumControl,
   guardarEstudiante,
 } = require("../estudianteService");
-const {db} = require("../../config/firebase");
 
 const {
   obtenerCarreras,
@@ -850,19 +850,39 @@ async function procesarCallbackQuery(
 
   if (partes[0] === "lectura" && partes.length === 2) {
     const avisoId = partes[1];
-    const destinatario = db.collection("avisos").doc(avisoId)
+    const avisoRef = db.collection("avisos").doc(avisoId);
+    const destinatarioRef = avisoRef
         .collection("destinatarios").doc(telegramId);
-    const destinatarioSnapshot = await destinatario.get();
 
-    if (!destinatarioSnapshot.exists) {
+    const resultado = await db.runTransaction(async (transaction) => {
+      const destinatarioSnapshot = await transaction.get(
+          destinatarioRef,
+      );
+
+      if (!destinatarioSnapshot.exists) {
+        return "no-encontrado";
+      }
+
+      if (destinatarioSnapshot.data().leido === true) {
+        return "ya-confirmado";
+      }
+
+      transaction.set(destinatarioRef, {
+        leido: true,
+        fechaLectura: new Date(),
+      }, {merge: true});
+
+      transaction.update(avisoRef, {
+        leidos: FieldValue.increment(1),
+      });
+
+      return "confirmado";
+    });
+
+    if (resultado === "no-encontrado") {
       await enviarMensaje(telegramId, "No se encontró este aviso.");
-      return;
     }
 
-    await destinatario.set({
-      leido: true,
-      fechaLectura: new Date(),
-    }, {merge: true});
     return;
   }
 
