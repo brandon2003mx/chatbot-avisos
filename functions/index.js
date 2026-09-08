@@ -83,32 +83,133 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         });
       }
 
-      await autenticarConRol(
-          encabezado.substring(7),
-          ["administrador", "coordinador"],
-      );
+      const token = encabezado.substring(7);
 
-      const [avisos, estudiantesSnapshot, destinatariosSnapshot] =
+      try {
+        await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para consultar el panel.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      // avisos ya trae destinatarios/leidos por aviso: alcanza para
+      // los totales sin volver a leer cada destinatario individual.
+      // estudiantesSnapshot sí necesita los documentos completos
+      // (no solo un conteo) para poder agruparlos por carrera.
+      const [avisos, estudiantesSnapshot, carreras] =
         await Promise.all([
           obtenerAvisos(),
           db.collection("estudiantes").get(),
-          db.collectionGroup("destinatarios").get(),
+          obtenerCarreras(),
         ]);
-      const lecturas = destinatariosSnapshot.docs.filter(
-          (doc) => doc.data().leido === true,
-      ).length;
+
+      const totalRecipients = avisos.reduce(
+          (total, aviso) => total + Number(aviso.destinatarios || 0),
+          0,
+      );
+
+      const totalReads = avisos.reduce(
+          (total, aviso) => total + Number(aviso.leidos || 0),
+          0,
+      );
+
+      const segmentoLabels = {
+        todos: "Todos",
+        carrera: "Carrera",
+        semestre: "Semestre",
+        grupo: "Grupo",
+      };
+
+      const conteoPorSegmento = new Map();
+
+      for (const aviso of avisos) {
+        const etiqueta =
+          segmentoLabels[aviso.tipoSegmentacion] ||
+          aviso.tipoSegmentacion;
+
+        conteoPorSegmento.set(
+            etiqueta,
+            (conteoPorSegmento.get(etiqueta) || 0) + 1,
+        );
+      }
+
+      const segments = Array.from(
+          conteoPorSegmento,
+          ([tipoSegmentacion, total]) => ({
+            segment_type: tipoSegmentacion,
+            total,
+          }),
+      );
+
+      const nombrePorCarreraId = new Map(
+          carreras.map((carrera) => [carrera.id, carrera.nombre]),
+      );
+
+      const conteoPorCarrera = new Map();
+
+      for (const documento of estudiantesSnapshot.docs) {
+        const carreraId = documento.data().carreraId;
+        const nombreCarrera =
+          nombrePorCarreraId.get(carreraId) || carreraId;
+
+        conteoPorCarrera.set(
+            nombreCarrera,
+            (conteoPorCarrera.get(nombreCarrera) || 0) + 1,
+        );
+      }
+
+      const careers = Array.from(
+          conteoPorCarrera,
+          ([carrera, total]) => ({carrera, total}),
+      );
+
+      const topNotices = avisos.slice(0, 5).map((aviso) => ({
+        titulo: aviso.titulo,
+        recipients: Number(aviso.destinatarios || 0),
+        confirmed_reads: Number(aviso.leidos || 0),
+      }));
 
       return res.status(200).json({
         ok: true,
         metrics: {
           total_notices: avisos.length,
           total_students: estudiantesSnapshot.size,
-          total_recipients: destinatariosSnapshot.size,
-          total_reads: lecturas,
+          total_recipients: totalRecipients,
+          total_reads: totalReads,
         },
-        topNotices: avisos.slice(0, 5),
-        segments: [],
-        careers: [],
+        topNotices,
+        segments,
+        careers,
       });
     }
 
