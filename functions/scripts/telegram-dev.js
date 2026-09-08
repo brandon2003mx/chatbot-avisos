@@ -1,10 +1,15 @@
 const fs = require("fs");
 
 /**
- * Carga TELEGRAM_BOT_TOKEN desde functions/.env.
+ * Carga TELEGRAM_BOT_TOKEN desde functions/.secret.local (nunca
+ * desde .env: ese archivo sí se empaqueta y se despliega como
+ * variable de entorno normal en `firebase deploy`, lo que choca
+ * con el secreto real de Secret Manager del mismo nombre.
+ * .secret.local es exclusivamente para el Emulador de Functions y
+ * scripts locales como este; `firebase deploy` nunca lo toca).
  */
 function cargarVariablesEntorno() {
-  const contenido = fs.readFileSync(".env", "utf8");
+  const contenido = fs.readFileSync(".secret.local", "utf8");
 
   const coincidencia = contenido.match(
       /^TELEGRAM_BOT_TOKEN=(.*)$/m,
@@ -12,7 +17,7 @@ function cargarVariablesEntorno() {
 
   if (!coincidencia || !coincidencia[1]) {
     throw new Error(
-        "No se encontró TELEGRAM_BOT_TOKEN en functions/.env.",
+        "No se encontró TELEGRAM_BOT_TOKEN en functions/.secret.local.",
     );
   }
 
