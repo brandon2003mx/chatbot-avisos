@@ -2,6 +2,7 @@ const {db} = require("../../config/firebase");
 
 const {
   obtenerEstudiantePorTelegramId,
+  obtenerEstudiantePorNumControl,
   guardarEstudiante,
 } = require("../estudianteService");
 
@@ -70,6 +71,27 @@ function validarNombreCompleto(texto) {
 }
 
 /**
+ * Número de control del ITTG: exactamente 8 dígitos (estándar
+ * TecNM: 2 de año + 3 de carrera + 3 secuenciales).
+ *
+ * @type {RegExp}
+ */
+const NUM_CONTROL_REGEX = /^\d{8}$/;
+
+/**
+ * Valida un número de control escrito por el estudiante.
+ *
+ * @param {string} texto Texto recibido de Telegram.
+ * @return {string|null} Número de control normalizado, o null si
+ *   no es válido.
+ */
+function validarNumControl(texto) {
+  const limpio = (texto || "").trim();
+
+  return NUM_CONTROL_REGEX.test(limpio) ? limpio : null;
+}
+
+/**
  * Guarda el avance de un registro que todavía no está completo:
  * primero solo la etapa ("nombre"), y luego el nombre completo ya
  * validado mientras el estudiante elige carrera/semestre/grupo.
@@ -78,7 +100,7 @@ function validarNombreCompleto(texto) {
  * aparece como destinatario de avisos a medio registrar.
  *
  * @param {string} telegramId ID de Telegram.
- * @param {Object} datos {etapa, nombre?}.
+ * @param {Object} datos {etapa, nombre?, numControl?}.
  * @return {Promise<void>}
  */
 async function guardarRegistroPendiente(telegramId, datos) {
@@ -127,12 +149,13 @@ async function eliminarRegistroPendiente(telegramId) {
 
 /**
  * Retoma un registro pendiente donde se quedó: si todavía falta
- * el nombre, lo vuelve a pedir; si el nombre ya se capturó, vuelve
- * a mostrar la selección de carrera (los pasos con botones nunca
- * se persisten, así que siempre se retoma desde ahí).
+ * el nombre o el número de control, lo vuelve a pedir; si ambos ya
+ * se capturaron, vuelve a mostrar la selección de carrera (los
+ * pasos con botones nunca se persisten, así que siempre se retoma
+ * desde ahí).
  *
  * @param {string} telegramId ID de Telegram.
- * @param {Object} pendiente {etapa, nombre?}.
+ * @param {Object} pendiente {etapa, nombre?, numControl?}.
  * @return {Promise<void>}
  */
 async function continuarRegistroPendiente(
@@ -143,6 +166,16 @@ async function continuarRegistroPendiente(
     await enviarMensaje(
         telegramId,
         "✍️ Escribe tu nombre completo (nombre y apellidos) " +
+        "para continuar tu registro.",
+    );
+
+    return;
+  }
+
+  if (pendiente.etapa === "numControl") {
+    await enviarMensaje(
+        telegramId,
+        "✍️ Escribe tu número de control (8 dígitos) " +
         "para continuar tu registro.",
     );
 
@@ -206,16 +239,6 @@ async function mostrarInfo(telegramId) {
     return;
   }
 
-  if (estudiante.estadoRegistro !== "completo") {
-    await enviarMensaje(
-        telegramId,
-        "Aún no has terminado tu registro.\n\n" +
-        "Utiliza /start para comenzar.",
-    );
-
-    return;
-  }
-
   const carrera = await obtenerCarrera(
       estudiante.carreraId,
   );
@@ -234,6 +257,8 @@ async function mostrarInfo(telegramId) {
   await enviarMensaje(
       telegramId,
       "👤 Mi información\n\n" +
+      `📛 Nombre: ${estudiante.nombre}\n` +
+      `🆔 Número de control: ${estudiante.numControl}\n` +
       `🎓 Carrera: ${nombreCarrera}\n` +
       `📚 Semestre: ${numeroSemestre}\n` +
       `👥 Grupo: ${estudiante.grupoId}`,
@@ -429,12 +454,12 @@ async function mostrarGrupos(
 }
 
 /**
- * Termina un registro nuevo: usa el nombre ya capturado en el
- * registro pendiente junto con la carrera/semestre/grupo recién
- * elegidos. Si el pendiente no existe o no tiene nombre (por
- * ejemplo, el estudiante llegó aquí con un botón viejo de un
- * intento anterior), le pide reiniciar con /start en vez de
- * fallar.
+ * Termina un registro nuevo: usa el nombre y número de control ya
+ * capturados en el registro pendiente junto con la carrera/
+ * semestre/grupo recién elegidos. Si el pendiente no existe o le
+ * falta algo (por ejemplo, el estudiante llegó aquí con un botón
+ * viejo de un intento anterior), le pide reiniciar con /start en
+ * vez de fallar.
  *
  * @param {string} telegramId ID de Telegram.
  * @param {string} carreraId ID de la carrera.
@@ -452,7 +477,7 @@ async function finalizarRegistroNuevo(
       telegramId,
   );
 
-  if (!pendiente || !pendiente.nombre) {
+  if (!pendiente || !pendiente.nombre || !pendiente.numControl) {
     await enviarMensaje(
         telegramId,
         "Tu registro ya no es válido. " +
@@ -464,6 +489,7 @@ async function finalizarRegistroNuevo(
 
   await guardarRegistroNuevo(
       telegramId,
+      pendiente.numControl,
       carreraId,
       semestreId,
       grupoId,
@@ -475,14 +501,14 @@ async function finalizarRegistroNuevo(
 
 /**
  * Procesa el texto que el estudiante escribió mientras tenía un
- * registro pendiente. Solo se interpreta como nombre completo en
- * la etapa "nombre"; en cualquier otra etapa (ya eligiendo
- * carrera/semestre/grupo con botones) se le recuerda usar los
- * botones en vez de escribir.
+ * registro pendiente: primero el nombre completo, luego el número
+ * de control. En cualquier otra etapa (ya eligiendo carrera/
+ * semestre/grupo con botones) se le recuerda usar los botones en
+ * vez de escribir.
  *
  * @param {string} telegramId ID de Telegram.
  * @param {string} texto Texto recibido de Telegram.
- * @param {Object} pendiente {etapa, nombre?}.
+ * @param {Object} pendiente {etapa, nombre?, numControl?}.
  * @return {Promise<void>}
  */
 async function procesarTextoRegistro(
@@ -490,39 +516,85 @@ async function procesarTextoRegistro(
     texto,
     pendiente,
 ) {
-  if (pendiente.etapa !== "nombre") {
+  if (pendiente.etapa === "nombre") {
+    const nombre = validarNombreCompleto(texto);
+
+    if (!nombre) {
+      await enviarMensaje(
+          telegramId,
+          "Ese nombre no parece válido. Escribe tu nombre " +
+          "completo (nombre y al menos un apellido), usando " +
+          "solo letras.",
+      );
+
+      return;
+    }
+
+    await guardarRegistroPendiente(
+        telegramId,
+        {
+          etapa: "numControl",
+          nombre,
+        },
+    );
+
     await enviarMensaje(
         telegramId,
-        "Usa los botones para continuar tu registro.",
+        "🆔 Ahora escribe tu número de control (8 dígitos):",
     );
 
     return;
   }
 
-  const nombre = validarNombreCompleto(texto);
+  if (pendiente.etapa === "numControl") {
+    const numControl = validarNumControl(texto);
 
-  if (!nombre) {
-    await enviarMensaje(
+    if (!numControl) {
+      await enviarMensaje(
+          telegramId,
+          "Ese número de control no es válido. " +
+          "Debe tener exactamente 8 dígitos.",
+      );
+
+      return;
+    }
+
+    const estudianteConEseNumControl =
+      await obtenerEstudiantePorNumControl(
+          numControl,
+      );
+
+    if (estudianteConEseNumControl) {
+      await enviarMensaje(
+          telegramId,
+          "Ese número de control ya está registrado. " +
+          "Si crees que es un error, contacta a tu " +
+          "coordinador.",
+      );
+
+      return;
+    }
+
+    await guardarRegistroPendiente(
         telegramId,
-        "Ese nombre no parece válido. Escribe tu nombre " +
-        "completo (nombre y al menos un apellido), usando " +
-        "solo letras.",
+        {
+          etapa: "carrera",
+          nombre: pendiente.nombre,
+          numControl,
+        },
+    );
+
+    await mostrarCarreras(
+        telegramId,
+        false,
     );
 
     return;
   }
 
-  await guardarRegistroPendiente(
+  await enviarMensaje(
       telegramId,
-      {
-        etapa: "carrera",
-        nombre,
-      },
-  );
-
-  await mostrarCarreras(
-      telegramId,
-      false,
+      "Usa los botones para continuar tu registro.",
   );
 }
 
@@ -530,6 +602,7 @@ async function procesarTextoRegistro(
  * Guarda un registro nuevo.
  *
  * @param {string} telegramId ID de Telegram.
+ * @param {string} numControl Número de control del estudiante.
  * @param {string} carreraId ID de la carrera.
  * @param {string} semestreId ID del semestre.
  * @param {string} grupoId ID del grupo.
@@ -538,6 +611,7 @@ async function procesarTextoRegistro(
  */
 async function guardarRegistroNuevo(
     telegramId,
+    numControl,
     carreraId,
     semestreId,
     grupoId,
@@ -558,17 +632,15 @@ async function guardarRegistroNuevo(
   }
 
   await guardarEstudiante(
-      telegramId,
+      numControl,
       {
         nombre,
-        matricula: "",
+        telegramId: String(telegramId),
         correoInstitucional: "",
         correoVerificado: false,
         carreraId,
         semestreId: String(semestreId),
         grupoId,
-        fcmToken: "",
-        estadoRegistro: "completo",
         fechaRegistro: new Date(),
       },
   );
@@ -626,10 +698,10 @@ async function guardarModificacion(
   }
 
   await guardarEstudiante(
-      telegramId,
+      estudiante.numControl,
       {
         nombre: estudiante.nombre,
-        matricula: estudiante.matricula,
+        telegramId: estudiante.telegramId,
         correoInstitucional:
           estudiante.correoInstitucional,
         correoVerificado:
@@ -637,8 +709,6 @@ async function guardarModificacion(
         carreraId,
         semestreId: String(semestreId),
         grupoId,
-        fcmToken: estudiante.fcmToken,
-        estadoRegistro: "completo",
         fechaRegistro: estudiante.fechaRegistro,
       },
   );
@@ -717,15 +787,6 @@ async function iniciarModificacion(telegramId) {
         telegramId,
         "Aún no estás registrado.\n\n" +
         "Utiliza /start para comenzar.",
-    );
-
-    return;
-  }
-
-  if (estudiante.estadoRegistro !== "completo") {
-    await enviarMensaje(
-        telegramId,
-        "Tu registro todavía no está completo.",
     );
 
     return;
