@@ -1,5 +1,9 @@
+const crypto = require("crypto");
+
 const {db} = require("../../config/firebase");
 const {FieldValue} = require("firebase-admin/firestore");
+
+const {enviarCorreo} = require("../correoService");
 
 const {
   obtenerEstudiantePorTelegramId,
@@ -92,6 +96,54 @@ function validarNumControl(texto) {
   return NUM_CONTROL_REGEX.test(limpio) ? limpio : null;
 }
 
+const DOMINIO_INSTITUCIONAL = "tuxtla.tecnm.mx";
+const PREFIJO_CORREO_INSTITUCIONAL = "l";
+const CODIGO_VIGENCIA_MS = 10 * 60 * 1000;
+const MAX_INTENTOS_CODIGO = 5;
+const MAX_ENVIOS_CODIGO = 3;
+
+/**
+ * Deduce el correo institucional a partir del número de control.
+ *
+ * Que el correo se deduzca (en vez de que el estudiante lo escriba)
+ * es lo que vuelve útil la verificación: si alguien teclea el número
+ * de control de un compañero, el código llega al buzón del dueño
+ * real y el impostor no puede continuar.
+ *
+ * @param {string} numControl Número de control.
+ * @return {string}
+ */
+function correoInstitucionalDe(numControl) {
+  return (
+    `${PREFIJO_CORREO_INSTITUCIONAL}${numControl}` +
+    `@${DOMINIO_INSTITUCIONAL}`
+  );
+}
+
+/**
+ * Genera un código de verificación de 6 dígitos.
+ *
+ * @return {string}
+ */
+function generarCodigo() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+/**
+ * Calcula el hash del código para no guardarlo en claro.
+ *
+ * Con solo 6 dígitos el hash no resiste fuerza bruta por sí mismo:
+ * lo que realmente protege es el límite de intentos y la vigencia
+ * corta. El hash solo evita que el código quede legible para quien
+ * mire la colección de registros pendientes.
+ *
+ * @param {string} codigo Código en claro.
+ * @return {string}
+ */
+function hashCodigo(codigo) {
+  return crypto.createHash("sha256").update(codigo).digest("hex");
+}
+
 /**
  * Guarda el avance de un registro que todavía no está completo:
  * primero solo la etapa ("nombre"), y luego el nombre completo ya
@@ -149,6 +201,185 @@ async function eliminarRegistroPendiente(telegramId) {
 }
 
 /**
+ * Genera y envía un código de verificación al correo institucional
+ * deducido del número de control, y deja el registro pendiente
+ * esperando ese código.
+ *
+ * Limita cuántas veces se puede reenviar por registro para que
+ * nadie use el bot como forma de llenarle el buzón a un compañero.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {Object} pendiente Registro pendiente actual.
+ * @return {Promise<boolean>} true si el código quedó enviado.
+ */
+async function enviarCodigoVerificacion(telegramId, pendiente) {
+  const enviosPrevios = pendiente.codigoEnvios || 0;
+
+  if (enviosPrevios >= MAX_ENVIOS_CODIGO) {
+    await enviarMensaje(
+        telegramId,
+        "Ya se enviaron demasiados códigos para este registro. " +
+        "Usa /start para comenzar de nuevo.",
+    );
+
+    return false;
+  }
+
+  const codigo = generarCodigo();
+  const correo = correoInstitucionalDe(pendiente.numControl);
+
+  try {
+    await enviarCorreo(
+        correo,
+        "Código de verificación - Avisos ITTG",
+        `Tu código de verificación es: ${codigo}\n\n` +
+        "Escríbelo en el chat del bot para terminar tu registro.\n" +
+        "El código vence en 10 minutos.\n\n" +
+        "Si no solicitaste este registro, ignora este correo.",
+    );
+  } catch (error) {
+    console.error(
+        "No se pudo enviar el código de verificación:",
+        error.message,
+    );
+
+    await enviarMensaje(
+        telegramId,
+        "No pudimos enviar el correo de verificación en este " +
+        "momento. Intenta de nuevo en unos minutos.",
+    );
+
+    return false;
+  }
+
+  await guardarRegistroPendiente(
+      telegramId,
+      {
+        ...pendiente,
+        etapa: "codigo",
+        correoInstitucional: correo,
+        codigoHash: hashCodigo(codigo),
+        codigoExpira: new Date(Date.now() + CODIGO_VIGENCIA_MS),
+        codigoIntentos: 0,
+        codigoEnvios: enviosPrevios + 1,
+      },
+  );
+
+  await enviarMensaje(
+      telegramId,
+      `📧 Enviamos un código de 6 dígitos a ${correo}.\n\n` +
+      "Escríbelo aquí para confirmar que eres tú. " +
+      "Vence en 10 minutos.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🔄 Reenviar código",
+                callback_data: "registro:reenviar",
+              },
+            ],
+          ],
+        },
+      },
+  );
+
+  return true;
+}
+
+/**
+ * Verifica el código que escribió el estudiante. Si es correcto,
+ * avanza a la selección de carrera; si no, descuenta un intento.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} texto Texto recibido de Telegram.
+ * @param {Object} pendiente Registro pendiente actual.
+ * @return {Promise<void>}
+ */
+async function procesarCodigoVerificacion(
+    telegramId,
+    texto,
+    pendiente,
+) {
+  const codigo = (texto || "").trim();
+
+  if (!/^\d{6}$/.test(codigo)) {
+    await enviarMensaje(
+        telegramId,
+        "El código debe ser de 6 dígitos. Revisa tu correo " +
+        "institucional y escríbelo aquí.",
+    );
+
+    return;
+  }
+
+  const expira = pendiente.codigoExpira ?
+    pendiente.codigoExpira.toDate().getTime() :
+    0;
+
+  if (Date.now() > expira) {
+    await enviarMensaje(
+        telegramId,
+        "Ese código ya venció. Pulsa \"Reenviar código\" para " +
+        "recibir uno nuevo.",
+    );
+
+    return;
+  }
+
+  const intentos = (pendiente.codigoIntentos || 0) + 1;
+
+  if (hashCodigo(codigo) !== pendiente.codigoHash) {
+    if (intentos >= MAX_INTENTOS_CODIGO) {
+      await eliminarRegistroPendiente(telegramId);
+
+      await enviarMensaje(
+          telegramId,
+          "Demasiados intentos fallidos. Tu registro se canceló; " +
+          "usa /start para comenzar de nuevo.",
+      );
+
+      return;
+    }
+
+    await guardarRegistroPendiente(
+        telegramId,
+        {...pendiente, codigoIntentos: intentos},
+    );
+
+    await enviarMensaje(
+        telegramId,
+        "Código incorrecto. Te quedan " +
+        `${MAX_INTENTOS_CODIGO - intentos} intento(s).`,
+    );
+
+    return;
+  }
+
+  // El código ya no se necesita: se guarda solo lo que hace falta
+  // para terminar el registro.
+  await guardarRegistroPendiente(
+      telegramId,
+      {
+        etapa: "carrera",
+        nombre: pendiente.nombre,
+        numControl: pendiente.numControl,
+        correoInstitucional: pendiente.correoInstitucional,
+      },
+  );
+
+  await enviarMensaje(
+      telegramId,
+      "✅ Correo verificado.",
+  );
+
+  await mostrarCarreras(
+      telegramId,
+      false,
+  );
+}
+
+/**
  * Retoma un registro pendiente donde se quedó: si todavía falta
  * el nombre o el número de control, lo vuelve a pedir; si ambos ya
  * se capturaron, vuelve a mostrar la selección de carrera (los
@@ -178,6 +409,28 @@ async function continuarRegistroPendiente(
         telegramId,
         "✍️ Escribe tu número de control (8 dígitos) " +
         "para continuar tu registro.",
+    );
+
+    return;
+  }
+
+  if (pendiente.etapa === "codigo") {
+    await enviarMensaje(
+        telegramId,
+        "📧 Escribe el código de 6 dígitos que enviamos a " +
+        `${pendiente.correoInstitucional} para continuar.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔄 Reenviar código",
+                  callback_data: "registro:reenviar",
+                },
+              ],
+            ],
+          },
+        },
     );
 
     return;
@@ -478,7 +731,12 @@ async function finalizarRegistroNuevo(
       telegramId,
   );
 
-  if (!pendiente || !pendiente.nombre || !pendiente.numControl) {
+  if (
+    !pendiente ||
+    !pendiente.nombre ||
+    !pendiente.numControl ||
+    !pendiente.correoInstitucional
+  ) {
     await enviarMensaje(
         telegramId,
         "Tu registro ya no es válido. " +
@@ -495,6 +753,7 @@ async function finalizarRegistroNuevo(
       semestreId,
       grupoId,
       pendiente.nombre,
+      pendiente.correoInstitucional,
   );
 
   await eliminarRegistroPendiente(telegramId);
@@ -576,18 +835,24 @@ async function procesarTextoRegistro(
       return;
     }
 
-    await guardarRegistroPendiente(
+    await enviarCodigoVerificacion(
         telegramId,
         {
-          etapa: "carrera",
+          etapa: "codigo",
           nombre: pendiente.nombre,
           numControl,
+          codigoEnvios: 0,
         },
     );
 
-    await mostrarCarreras(
+    return;
+  }
+
+  if (pendiente.etapa === "codigo") {
+    await procesarCodigoVerificacion(
         telegramId,
-        false,
+        texto,
+        pendiente,
     );
 
     return;
@@ -608,6 +873,7 @@ async function procesarTextoRegistro(
  * @param {string} semestreId ID del semestre.
  * @param {string} grupoId ID del grupo.
  * @param {string} nombre Nombre del estudiante.
+ * @param {string} correoInstitucional Correo ya verificado.
  * @return {Promise<void>}
  */
 async function guardarRegistroNuevo(
@@ -617,6 +883,7 @@ async function guardarRegistroNuevo(
     semestreId,
     grupoId,
     nombre,
+    correoInstitucional,
 ) {
   const estudianteExistente =
     await obtenerEstudiantePorTelegramId(
@@ -637,8 +904,8 @@ async function guardarRegistroNuevo(
       {
         nombre,
         telegramId: String(telegramId),
-        correoInstitucional: "",
-        correoVerificado: false,
+        correoInstitucional,
+        correoVerificado: true,
         carreraId,
         semestreId: String(semestreId),
         grupoId,
@@ -893,6 +1160,23 @@ async function procesarCallbackQuery(
 
   if (datos === "registro:modificar") {
     await iniciarModificacion(telegramId);
+    return;
+  }
+
+  if (datos === "registro:reenviar") {
+    const pendiente = await obtenerRegistroPendiente(telegramId);
+
+    if (!pendiente || pendiente.etapa !== "codigo") {
+      await enviarMensaje(
+          telegramId,
+          "No hay ningún código pendiente por verificar. " +
+          "Usa /start para comenzar tu registro.",
+      );
+
+      return;
+    }
+
+    await enviarCodigoVerificacion(telegramId, pendiente);
     return;
   }
 

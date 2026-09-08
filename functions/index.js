@@ -48,6 +48,7 @@ setGlobalOptions({
 
 const telegramBotToken = defineSecret("TELEGRAM_BOT_TOKEN");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+const resendApiKey = defineSecret("RESEND_API_KEY");
 
 // Configuración conservadora de la cola de envío de avisos. No
 // busca throughput máximo todavía: el objetivo de esta fase es
@@ -1467,7 +1468,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
  * Recibe las actualizaciones de Telegram.
  */
 exports.telegramWebhook = onRequest(
-    {secrets: [telegramBotToken, telegramWebhookSecret]},
+    {secrets: [telegramBotToken, telegramWebhookSecret, resendApiKey]},
     async (req, res) => {
       try {
         if (req.method !== "POST") {
