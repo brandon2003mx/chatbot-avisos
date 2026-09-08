@@ -2,6 +2,7 @@ requireCoordinador('login.html');
 bindLogout('logoutButton', 'login.html');
 authReady.then(user => {
   if (!user) return;
+  mostrarRolUsuario('coordinator', user.email);
   loadAvisos();
 });
 
@@ -62,9 +63,11 @@ function renderAvisos(avisos) {
     </td>
     <td><span class="notice-badge">${escapeHtml(formatSegmento(aviso))}</span></td>
     <td>${Number(aviso.errores || 0)}</td>
-    <td class="notice-actions">
-      <button class="button-outline dark" type="button" data-edit-id="${escapeHtml(aviso.id)}" ${disabledAttr}>Editar</button>
-      <button class="button-outline dark" type="button" data-delete-id="${escapeHtml(aviso.id)}" ${disabledAttr}>Eliminar</button>
+    <td>
+      <div class="notice-actions">
+        <button class="button-outline dark" type="button" data-edit-id="${escapeHtml(aviso.id)}" ${disabledAttr}>Editar</button>
+        <button class="button-outline dark" type="button" data-delete-id="${escapeHtml(aviso.id)}" ${disabledAttr}>Eliminar</button>
+      </div>
     </td>
   </tr>`;
   }).join('');
@@ -89,7 +92,45 @@ async function loadAvisos() {
 
 document.getElementById('manageRefreshButton').addEventListener('click', loadAvisos);
 
-document.getElementById('managedNotices').addEventListener('click', async event => {
+const deleteDialog = document.getElementById('deleteDialog');
+const confirmDeleteButton = document.getElementById('confirmDeleteButton');
+const cancelDeleteButton = document.getElementById('cancelDeleteButton');
+let botonEliminarPendiente = null;
+
+function confirmarEliminar(boton) {
+  botonEliminarPendiente = boton;
+  deleteDialog.showModal();
+}
+
+function cerrarConfirmacionEliminar() {
+  deleteDialog.close();
+  botonEliminarPendiente = null;
+}
+
+cancelDeleteButton.addEventListener('click', cerrarConfirmacionEliminar);
+deleteDialog.addEventListener('cancel', cerrarConfirmacionEliminar);
+
+confirmDeleteButton.addEventListener('click', async () => {
+  const deleteButton = botonEliminarPendiente;
+  if (!deleteButton) return;
+  const avisoId = deleteButton.dataset.deleteId;
+  deleteButton.disabled = true;
+  confirmDeleteButton.disabled = true;
+  try {
+    await apiRequest(`/avisos/${encodeURIComponent(avisoId)}`, { method: 'DELETE' });
+    cerrarConfirmacionEliminar();
+    showMessage('Aviso eliminado permanentemente.', 'success');
+    loadAvisos();
+  } catch (error) {
+    cerrarConfirmacionEliminar();
+    showMessage(error.message);
+    deleteButton.disabled = false;
+  } finally {
+    confirmDeleteButton.disabled = false;
+  }
+});
+
+document.getElementById('managedNotices').addEventListener('click', event => {
   const editButton = event.target.closest('[data-edit-id]');
   if (editButton) {
     window.location.href = `avisos.html?editar=${encodeURIComponent(editButton.dataset.editId)}`;
@@ -98,15 +139,5 @@ document.getElementById('managedNotices').addEventListener('click', async event 
 
   const deleteButton = event.target.closest('[data-delete-id]');
   if (!deleteButton) return;
-  const avisoId = deleteButton.dataset.deleteId;
-  if (!window.confirm('¿Eliminar este aviso de forma PERMANENTE? Se borrará el aviso y todos sus destinatarios/lotes de la base de datos. Esta acción no se puede deshacer y no afecta los mensajes ya entregados en Telegram.')) return;
-  deleteButton.disabled = true;
-  try {
-    await apiRequest(`/avisos/${encodeURIComponent(avisoId)}`, { method: 'DELETE' });
-    showMessage('Aviso eliminado permanentemente.', 'success');
-    loadAvisos();
-  } catch (error) {
-    showMessage(error.message);
-    deleteButton.disabled = false;
-  }
+  confirmarEliminar(deleteButton);
 });

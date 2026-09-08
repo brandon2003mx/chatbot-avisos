@@ -223,7 +223,6 @@ async function procesarDestinatario(
 
   try {
     await enviarMensaje(telegramId, mensaje, {
-      parse_mode: "Markdown",
       reply_markup: {
         inline_keyboard: [[{
           text: "Confirmar lectura",

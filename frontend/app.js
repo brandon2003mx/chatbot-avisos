@@ -81,6 +81,6 @@ document.getElementById('refreshButton').addEventListener('click', loadDashboard
 
 authReady.then(user => {
   if (!user) return;
-  document.getElementById('coordinator').textContent = `Coordinador: ${user.email}`;
+  mostrarRolUsuario('coordinator', user.email);
   loadDashboard();
 });

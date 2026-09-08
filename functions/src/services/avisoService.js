@@ -317,10 +317,9 @@ async function reclamarIdempotencyKeyYCrearAviso(
       enviados: 0,
       errores: 0,
       ambiguos: 0,
+      leidos: 0,
       totalLotes,
       lotesTerminales: 0,
-      idempotencyKey,
-      requestHash,
       fechaCreacion: ahora,
       fechaActualizacion: ahora,
     });

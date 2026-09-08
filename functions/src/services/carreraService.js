@@ -86,7 +86,9 @@ async function obtenerCarrera(carreraId) {
  * Crea una carrera.
  *
  * @param {string} carreraId Identificador de la carrera.
- * @param {Object} datos Datos de la carrera.
+ * @param {Object} datos Datos de la carrera. `clave` es opcional
+ *   (se guarda como cadena vacía si no se proporciona): se conserva
+ *   como dato institucional, pero la app no la consume.
  * @return {Promise<void>}
  */
 async function crearCarrera(
@@ -98,7 +100,7 @@ async function crearCarrera(
       .doc(carreraId)
       .set({
         nombre: datos.nombre,
-        clave: datos.clave,
+        clave: datos.clave || "",
         activo: true,
         fechaCreacion: new Date(),
         fechaActualizacion: new Date(),

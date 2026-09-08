@@ -2,7 +2,7 @@ requireCoordinador('login.html');
 bindLogout('logoutButton', 'login.html');
 authReady.then(async user => {
   if (!user) return;
-  document.getElementById('coordinator').textContent = `Coordinador: ${user.email}`;
+  mostrarRolUsuario('coordinator', user.email);
   loadAvisos();
   await loadCarreras();
   if (reemplazaAvisoId) {
@@ -77,8 +77,31 @@ semestreSelect.addEventListener('change', () => loadGrupos(carreraSelect.value, 
 const formTitle = document.getElementById('formTitle');
 const editWarning = document.getElementById('editWarning');
 const submitAvisoButton = document.getElementById('submitAvisoButton');
+const cancelEditButton = document.getElementById('cancelEditButton');
 const tituloInput = document.getElementById('titulo');
 const contenidoInput = document.getElementById('contenido');
+const contenidoContador = document.getElementById('contenidoContador');
+
+// Límite real de Telegram para sendMessage: 4096 caracteres. Se
+// cuenta el mensaje completo tal como se arma en avisoWorkerService.js
+// (emoji + título + doble salto de línea + contenido), no solo el
+// textarea, para que el contador sea honesto sobre lo que de verdad
+// se manda.
+const TELEGRAM_MENSAJE_MAX = 4096;
+
+function calcularLargoMensaje() {
+  return `📢 ${tituloInput.value}\n\n${contenidoInput.value}`.length;
+}
+
+function actualizarContadorCaracteres() {
+  const largo = calcularLargoMensaje();
+  contenidoContador.textContent = `${largo} / ${TELEGRAM_MENSAJE_MAX} caracteres`;
+  contenidoContador.classList.toggle('char-counter-warning', largo > TELEGRAM_MENSAJE_MAX * 0.9 && largo <= TELEGRAM_MENSAJE_MAX);
+  contenidoContador.classList.toggle('char-counter-over', largo > TELEGRAM_MENSAJE_MAX);
+}
+
+tituloInput.addEventListener('input', actualizarContadorCaracteres);
+contenidoInput.addEventListener('input', actualizarContadorCaracteres);
 
 let reemplazaAvisoId = new URLSearchParams(window.location.search).get('editar');
 
@@ -88,13 +111,19 @@ function activarModoCreacion() {
   formTitle.textContent = 'Redactar aviso';
   editWarning.hidden = true;
   submitAvisoButton.textContent = 'Enviar aviso';
+  cancelEditButton.hidden = true;
 }
 
 function activarModoEdicion() {
   formTitle.textContent = 'Editar y reenviar aviso';
   editWarning.hidden = false;
   submitAvisoButton.textContent = 'Guardar cambios y reenviar';
+  cancelEditButton.hidden = false;
 }
+
+cancelEditButton.addEventListener('click', () => {
+  window.location.href = 'administrar_avisos.html';
+});
 
 async function precargarEdicion(avisoId) {
   try {
@@ -115,6 +144,7 @@ async function precargarEdicion(avisoId) {
       await loadGrupos(aviso.carreraId, String(aviso.semestreId));
       grupoSelect.value = aviso.grupoId;
     }
+    actualizarContadorCaracteres();
   } catch (error) {
     showMessage(error.message);
     activarModoCreacion();
@@ -191,6 +221,12 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
   const submitButton = formElement.querySelector('button[type="submit"]');
+
+  if (calcularLargoMensaje() > TELEGRAM_MENSAJE_MAX) {
+    showMessage(`El mensaje supera el límite de ${TELEGRAM_MENSAJE_MAX} caracteres que permite Telegram.`);
+    return;
+  }
+
   // Se genera una sola vez por intento de envío lógico: si en el
   // futuro se agrega un reintento HTTP para esta misma operación,
   // debe reutilizar esta misma clave, no generar una nueva.
@@ -222,6 +258,7 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
     formElement.reset();
     activarModoCreacion();
     updateVisibleFields();
+    actualizarContadorCaracteres();
     loadAvisos();
   } catch (error) {
     showMessage(error.message);

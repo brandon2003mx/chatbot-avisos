@@ -25,7 +25,7 @@
         </div>
       </div>
       <div class="user-info">
-        <p id="coordinator" class="subtitle">Coordinador: pendiente de autenticación</p>
+        <p id="coordinator" class="subtitle"></p>
         <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
       </div>
     </div>
@@ -36,55 +36,62 @@
     </nav>
   </header>
 
-  <main>
+  <main class="main-narrow">
     <div id="status" class="message" role="status" hidden></div>
 
-    <section class="panel">
+    <section class="panel panel-card">
       <h2 id="formTitle">Redactar aviso</h2>
       <p id="editWarning" class="form-warning" hidden>Estás corrigiendo un aviso ya enviado: al guardar se creará y enviará un aviso nuevo a los destinatarios que coincidan con la segmentación, y el original quedará oculto de la lista.</p>
       <form id="avisoForm" class="form-grid">
-        <div>
+        <div class="field-full">
           <label for="titulo">Título del aviso</label>
           <input id="titulo" name="titulo" type="text" placeholder="Ej. Suspensión de clases" required>
         </div>
-        <div>
+        <div class="field-full">
           <label for="contenido">Mensaje</label>
           <textarea id="contenido" name="contenido" placeholder="Describe el aviso institucional" required></textarea>
+          <p id="contenidoContador" class="char-counter">0 / 4096 caracteres</p>
         </div>
-        <div>
-          <label for="tipoSegmentacion">Dirigido a</label>
-          <select id="tipoSegmentacion" name="tipoSegmentacion" required>
-            <option value="todos">Todos los estudiantes</option>
-            <option value="carrera">Una carrera</option>
-            <option value="semestre">Un semestre</option>
-            <option value="grupo">Un grupo</option>
-          </select>
+        <div class="field-group">
+          <div class="field-full">
+            <p class="field-group-label">Segmentación</p>
+          </div>
+          <div>
+            <label for="tipoSegmentacion">Dirigido a</label>
+            <select id="tipoSegmentacion" name="tipoSegmentacion" required>
+              <option value="todos">Todos los estudiantes</option>
+              <option value="carrera">Una carrera</option>
+              <option value="semestre">Un semestre</option>
+              <option value="grupo">Un grupo</option>
+            </select>
+          </div>
+          <div id="carreraField" hidden>
+            <label for="carrera">Carrera</label>
+            <select id="carrera" name="carrera">
+              <option value="">Selecciona una carrera</option>
+            </select>
+          </div>
+          <div id="semestreField" hidden>
+            <label for="semestre">Semestre</label>
+            <select id="semestre" name="semestre">
+              <option value="">Selecciona un semestre</option>
+            </select>
+          </div>
+          <div id="grupoField" hidden>
+            <label for="grupo">Grupo</label>
+            <select id="grupo" name="grupo">
+              <option value="">Selecciona un grupo</option>
+            </select>
+          </div>
         </div>
-        <div id="carreraField" hidden>
-          <label for="carrera">Carrera</label>
-          <select id="carrera" name="carrera">
-            <option value="">Selecciona una carrera</option>
-          </select>
-        </div>
-        <div id="semestreField" hidden>
-          <label for="semestre">Semestre</label>
-          <select id="semestre" name="semestre">
-            <option value="">Selecciona un semestre</option>
-          </select>
-        </div>
-        <div id="grupoField" hidden>
-          <label for="grupo">Grupo</label>
-          <select id="grupo" name="grupo">
-            <option value="">Selecciona un grupo</option>
-          </select>
-        </div>
-        <div class="form-action">
+        <div class="form-action field-full">
           <button id="submitAvisoButton" class="primary-button" type="submit">Enviar aviso</button>
+          <button id="cancelEditButton" class="button-outline dark" type="button" hidden>Cancelar edición</button>
         </div>
       </form>
     </section>
 
-    <section class="panel">
+    <section class="panel panel-card">
       <h2>Avisos enviados</h2>
       <div class="table-wrap">
         <table>
