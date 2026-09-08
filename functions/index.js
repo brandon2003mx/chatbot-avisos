@@ -259,6 +259,55 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       });
     }
 
+    if (req.method === "GET" && ruta === "/me") {
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      let autenticacion;
+
+      try {
+        autenticacion = await autenticarUsuario(token);
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO: "Se requiere autenticación.",
+          TOKEN_INVALIDO: "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "El usuario no tiene permisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          return res.status(401).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      return res.status(200).json({
+        ok: true,
+        uid: autenticacion.uid,
+        rol: autenticacion.usuario.rol,
+      });
+    }
+
     if (req.method === "POST" && ruta === "/avisos") {
       const encabezado =
         req.headers.authorization || "";
@@ -429,12 +478,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         );
       }
 
-      if (!clave || !clave.trim()) {
-        throw new Error(
-            "La clave de la carrera es obligatoria.",
-        );
-      }
-
       const carreraExistente = await obtenerCarrera(
           id.trim(),
       );
@@ -445,11 +488,16 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         );
       }
 
+      // La clave (ISC, IGE, ...) es opcional: se conserva como dato
+      // institucional, pero hoy ninguna parte de la app la consume,
+      // así que no se obliga a capturarla.
+      const claveNormalizada = clave ? String(clave).trim() : "";
+
       await crearCarrera(
           id.trim(),
           {
             nombre: nombre.trim(),
-            clave: clave.trim(),
+            clave: claveNormalizada,
           },
       );
 
@@ -458,7 +506,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         carrera: {
           id: id.trim(),
           nombre: nombre.trim(),
-          clave: clave.trim(),
+          clave: claveNormalizada,
           activo: true,
         },
         creadoPor: autenticacion.uid,
@@ -815,14 +863,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         datos.nombre = nombre.trim();
       }
 
+      // Se permite mandarla vacía para borrarla: es un campo
+      // opcional.
       if (clave !== undefined) {
-        if (!clave.trim()) {
-          throw new Error(
-              "La clave de la carrera no puede estar vacía.",
-          );
-        }
-
-        datos.clave = clave.trim();
+        datos.clave = String(clave).trim();
       }
 
       if (activo !== undefined) {
@@ -1380,7 +1424,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "No existen estudiantes destinatarios para esta segmentación.",
       "El identificador de la carrera es obligatorio.",
       "El nombre de la carrera es obligatorio.",
-      "La clave de la carrera es obligatoria.",
       "Ya existe una carrera con ese identificador.",
       "El semestre no existe o está inactivo.",
       "El identificador del semestre es obligatorio.",
@@ -1392,7 +1435,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "Ya existe ese grupo en el semestre.",
       "La carrera no existe o está inactiva.",
       "El nombre de la carrera no puede estar vacío.",
-      "La clave de la carrera no puede estar vacía.",
       "El campo activo debe ser booleano.",
       "No se proporcionaron cambios.",
       "La carrera no existe.",
