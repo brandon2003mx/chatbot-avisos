@@ -5,6 +5,7 @@ const {onTaskDispatched} = require("firebase-functions/v2/tasks");
 const {defineSecret} = require("firebase-functions/params");
 
 const {getFunctions} = require("firebase-admin/functions");
+const {db} = require("./src/config/firebase");
 
 const {
   obtenerCarreras,
@@ -47,6 +48,7 @@ setGlobalOptions({
 
 const telegramBotToken = defineSecret("TELEGRAM_BOT_TOKEN");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+const resendApiKey = defineSecret("RESEND_API_KEY");
 
 // Configuración conservadora de la cola de envío de avisos. No
 // busca throughput máximo todavía: el objetivo de esta fase es
@@ -71,6 +73,146 @@ const MAX_DISPATCHES_POR_SEGUNDO = 5;
 exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
+
+    if (req.method === "GET" && ruta === "/dashboard") {
+      const encabezado = req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      try {
+        await autenticarConRol(
+            token,
+            ["administrador", "coordinador"],
+        );
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO:
+            "Se requiere autenticación.",
+          TOKEN_INVALIDO:
+            "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para consultar el panel.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          const estado =
+            error.message === "ROL_NO_AUTORIZADO" ?
+              403 :
+              401;
+
+          return res.status(estado).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      // avisos ya trae destinatarios/leidos por aviso: alcanza para
+      // los totales sin volver a leer cada destinatario individual.
+      // estudiantesSnapshot sí necesita los documentos completos
+      // (no solo un conteo) para poder agruparlos por carrera.
+      const [avisos, estudiantesSnapshot, carreras] =
+        await Promise.all([
+          obtenerAvisos(),
+          db.collection("estudiantes").get(),
+          obtenerCarreras(),
+        ]);
+
+      const totalRecipients = avisos.reduce(
+          (total, aviso) => total + Number(aviso.destinatarios || 0),
+          0,
+      );
+
+      const totalReads = avisos.reduce(
+          (total, aviso) => total + Number(aviso.leidos || 0),
+          0,
+      );
+
+      const segmentoLabels = {
+        todos: "Todos",
+        carrera: "Carrera",
+        semestre: "Semestre",
+        grupo: "Grupo",
+      };
+
+      const conteoPorSegmento = new Map();
+
+      for (const aviso of avisos) {
+        const etiqueta =
+          segmentoLabels[aviso.tipoSegmentacion] ||
+          aviso.tipoSegmentacion;
+
+        conteoPorSegmento.set(
+            etiqueta,
+            (conteoPorSegmento.get(etiqueta) || 0) + 1,
+        );
+      }
+
+      const segments = Array.from(
+          conteoPorSegmento,
+          ([tipoSegmentacion, total]) => ({
+            segment_type: tipoSegmentacion,
+            total,
+          }),
+      );
+
+      const nombrePorCarreraId = new Map(
+          carreras.map((carrera) => [carrera.id, carrera.nombre]),
+      );
+
+      const conteoPorCarrera = new Map();
+
+      for (const documento of estudiantesSnapshot.docs) {
+        const carreraId = documento.data().carreraId;
+        const nombreCarrera =
+          nombrePorCarreraId.get(carreraId) || carreraId;
+
+        conteoPorCarrera.set(
+            nombreCarrera,
+            (conteoPorCarrera.get(nombreCarrera) || 0) + 1,
+        );
+      }
+
+      const careers = Array.from(
+          conteoPorCarrera,
+          ([carrera, total]) => ({carrera, total}),
+      );
+
+      const topNotices = avisos.slice(0, 5).map((aviso) => ({
+        titulo: aviso.titulo,
+        recipients: Number(aviso.destinatarios || 0),
+        confirmed_reads: Number(aviso.leidos || 0),
+      }));
+
+      return res.status(200).json({
+        ok: true,
+        metrics: {
+          total_notices: avisos.length,
+          total_students: estudiantesSnapshot.size,
+          total_recipients: totalRecipients,
+          total_reads: totalReads,
+        },
+        topNotices,
+        segments,
+        careers,
+      });
+    }
 
     if (req.method === "GET" && ruta === "/carreras") {
       const carreras = await obtenerCarreras();
@@ -115,6 +257,55 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         carreraId,
         semestreId,
         grupos,
+      });
+    }
+
+    if (req.method === "GET" && ruta === "/me") {
+      const encabezado =
+        req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      let autenticacion;
+
+      try {
+        autenticacion = await autenticarUsuario(token);
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO: "Se requiere autenticación.",
+          TOKEN_INVALIDO: "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO:
+            "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "El usuario no tiene permisos.",
+        };
+
+        const mensaje =
+          erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          return res.status(401).json({
+            ok: false,
+            mensaje,
+          });
+        }
+
+        throw error;
+      }
+
+      return res.status(200).json({
+        ok: true,
+        uid: autenticacion.uid,
+        rol: autenticacion.usuario.rol,
       });
     }
 
@@ -288,12 +479,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         );
       }
 
-      if (!clave || !clave.trim()) {
-        throw new Error(
-            "La clave de la carrera es obligatoria.",
-        );
-      }
-
       const carreraExistente = await obtenerCarrera(
           id.trim(),
       );
@@ -304,11 +489,16 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         );
       }
 
+      // La clave (ISC, IGE, ...) es opcional: se conserva como dato
+      // institucional, pero hoy ninguna parte de la app la consume,
+      // así que no se obliga a capturarla.
+      const claveNormalizada = clave ? String(clave).trim() : "";
+
       await crearCarrera(
           id.trim(),
           {
             nombre: nombre.trim(),
-            clave: clave.trim(),
+            clave: claveNormalizada,
           },
       );
 
@@ -317,7 +507,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         carrera: {
           id: id.trim(),
           nombre: nombre.trim(),
-          clave: clave.trim(),
+          clave: claveNormalizada,
           activo: true,
         },
         creadoPor: autenticacion.uid,
@@ -674,14 +864,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         datos.nombre = nombre.trim();
       }
 
+      // Se permite mandarla vacía para borrarla: es un campo
+      // opcional.
       if (clave !== undefined) {
-        if (!clave.trim()) {
-          throw new Error(
-              "La clave de la carrera no puede estar vacía.",
-          );
-        }
-
-        datos.clave = clave.trim();
+        datos.clave = String(clave).trim();
       }
 
       if (activo !== undefined) {
@@ -1239,7 +1425,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "No existen estudiantes destinatarios para esta segmentación.",
       "El identificador de la carrera es obligatorio.",
       "El nombre de la carrera es obligatorio.",
-      "La clave de la carrera es obligatoria.",
       "Ya existe una carrera con ese identificador.",
       "El semestre no existe o está inactivo.",
       "El identificador del semestre es obligatorio.",
@@ -1251,7 +1436,6 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "Ya existe ese grupo en el semestre.",
       "La carrera no existe o está inactiva.",
       "El nombre de la carrera no puede estar vacío.",
-      "La clave de la carrera no puede estar vacía.",
       "El campo activo debe ser booleano.",
       "No se proporcionaron cambios.",
       "La carrera no existe.",
@@ -1284,7 +1468,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
  * Recibe las actualizaciones de Telegram.
  */
 exports.telegramWebhook = onRequest(
-    {secrets: [telegramBotToken, telegramWebhookSecret]},
+    {secrets: [telegramBotToken, telegramWebhookSecret, resendApiKey]},
     async (req, res) => {
       try {
         if (req.method !== "POST") {

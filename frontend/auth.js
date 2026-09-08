@@ -1,6 +1,35 @@
 const API_URL = window.APP_CONFIG?.apiUrl || '/api';
 
 const SEGMENTO_LABELS = { todos: 'Todos', carrera: 'Carrera', semestre: 'Semestre', grupo: 'Grupo' };
+const ROL_LABELS = { administrador: 'Administrador', coordinador: 'Coordinador' };
+
+function leerRolCacheado(email) {
+  try { return sessionStorage.getItem(`rol:${email}`); } catch (error) { return null; }
+}
+
+function guardarRolCacheado(email, rol) {
+  try { sessionStorage.setItem(`rol:${email}`, rol); } catch (error) { /* sin caché disponible */ }
+}
+
+async function mostrarRolUsuario(elementId, email) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  // El rol vive en Firestore, no en el token, así que hay que
+  // preguntarlo al backend. Para no mostrar un rol equivocado
+  // mientras llega esa respuesta: si ya se consultó antes en esta
+  // sesión se usa ese valor, y si no, se muestra solo el correo.
+  const rolCacheado = leerRolCacheado(email);
+  element.textContent = rolCacheado ? `${ROL_LABELS[rolCacheado] || 'Usuario'}: ${email}` : email;
+
+  try {
+    const { rol } = await apiRequest('/me');
+    element.textContent = `${ROL_LABELS[rol] || 'Usuario'}: ${email}`;
+    guardarRolCacheado(email, rol);
+  } catch (error) {
+    if (!rolCacheado) element.textContent = `Usuario: ${email}`;
+  }
+}
 
 async function apiRequest(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json', ...options.headers };

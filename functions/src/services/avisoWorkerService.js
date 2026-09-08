@@ -222,7 +222,14 @@ async function procesarDestinatario(
   let errorEnvio = null;
 
   try {
-    await enviarMensaje(telegramId, mensaje);
+    await enviarMensaje(telegramId, mensaje, {
+      reply_markup: {
+        inline_keyboard: [[{
+          text: "Confirmar lectura",
+          callback_data: `lectura:${avisoId}`,
+        }]],
+      },
+    });
   } catch (error) {
     errorEnvio = error;
   }

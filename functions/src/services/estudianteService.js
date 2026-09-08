@@ -1,15 +1,43 @@
 const {db} = require("../config/firebase");
 
 /**
- * Obtiene un estudiante por su Telegram ID.
+ * Obtiene un estudiante por su Telegram ID. Como el documento
+ * ahora se identifica por `numControl` (no por `telegramId`),
+ * esto requiere una consulta en vez de una lectura directa.
  *
  * @param {string} telegramId ID de Telegram.
  * @return {Promise<Object|null>}
  */
 async function obtenerEstudiantePorTelegramId(telegramId) {
+  const snapshot = await db
+      .collection("estudiantes")
+      .where("telegramId", "==", String(telegramId))
+      .limit(1)
+      .get();
+
+  if (snapshot.empty) {
+    return null;
+  }
+
+  const documento = snapshot.docs[0];
+
+  return {
+    id: documento.id,
+    ...documento.data(),
+  };
+}
+
+/**
+ * Obtiene un estudiante por su número de control, que es el ID
+ * del documento.
+ *
+ * @param {string} numControl Número de control.
+ * @return {Promise<Object|null>}
+ */
+async function obtenerEstudiantePorNumControl(numControl) {
   const documento = await db
       .collection("estudiantes")
-      .doc(String(telegramId))
+      .doc(String(numControl))
       .get();
 
   if (!documento.exists) {
@@ -23,25 +51,26 @@ async function obtenerEstudiantePorTelegramId(telegramId) {
 }
 
 /**
- * Guarda un estudiante completo.
+ * Guarda un estudiante completo, usando su número de control
+ * como ID del documento.
  *
  * Esta función debe utilizarse únicamente cuando
  * el registro haya terminado.
  *
- * @param {string} telegramId ID de Telegram.
+ * @param {string} numControl Número de control del estudiante.
  * @param {Object} datos Datos completos del estudiante.
  * @return {Promise<void>}
  */
 async function guardarEstudiante(
-    telegramId,
+    numControl,
     datos,
 ) {
   await db
       .collection("estudiantes")
-      .doc(String(telegramId))
+      .doc(String(numControl))
       .set({
         ...datos,
-        telegramId: String(telegramId),
+        numControl: String(numControl),
         activo: true,
         fechaActualizacion: new Date(),
       });
@@ -97,6 +126,7 @@ async function buscarEstudiantesPorSegmentacion(
 
 module.exports = {
   obtenerEstudiantePorTelegramId,
+  obtenerEstudiantePorNumControl,
   guardarEstudiante,
   buscarEstudiantesPorSegmentacion,
 };

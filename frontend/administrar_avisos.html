@@ -26,6 +26,7 @@
         </div>
       </div>
       <div class="user-info">
+        <p id="coordinator" class="subtitle"></p>
         <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
       </div>
     </div>
@@ -36,10 +37,10 @@
     </nav>
   </header>
 
-  <main>
+  <main class="main-narrow">
     <div id="status" class="message" role="status" hidden></div>
 
-    <section class="panel notice-manager" aria-labelledby="noticeManagerTitle">
+    <section class="panel panel-card notice-manager" aria-labelledby="noticeManagerTitle">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Administración</p>
@@ -65,5 +66,17 @@
       </div>
     </section>
   </main>
+
+  <dialog id="deleteDialog" class="confirm-dialog">
+    <div class="confirm-dialog-body">
+      <p class="confirm-dialog-icon">⚠️</p>
+      <h2>Eliminar aviso de forma permanente</h2>
+      <p>Se borrará el aviso y todos sus destinatarios/lotes de la base de datos. <strong>Esta acción no se puede deshacer.</strong> Los mensajes ya entregados en Telegram no se ven afectados.</p>
+      <div class="form-actions">
+        <button id="confirmDeleteButton" class="primary-button danger" type="button">Sí, eliminar permanentemente</button>
+        <button id="cancelDeleteButton" class="button-outline dark" type="button">Cancelar</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>
