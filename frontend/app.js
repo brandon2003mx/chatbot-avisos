@@ -22,9 +22,7 @@ function normalizeDashboard(payload) {
 }
 
 async function requestDashboard() {
-  const response = await fetch(`${API_URL}/dashboard`, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`La API respondió con estado ${response.status}`);
-  return normalizeDashboard(await response.json());
+  return normalizeDashboard(await apiRequest('/dashboard'));
 }
 
 function renderChart(id, config) {
