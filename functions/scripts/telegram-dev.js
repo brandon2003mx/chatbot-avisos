@@ -11,17 +11,19 @@ const fs = require("fs");
 function cargarVariablesEntorno() {
   const contenido = fs.readFileSync(".secret.local", "utf8");
 
-  const coincidencia = contenido.match(
-      /^TELEGRAM_BOT_TOKEN=(.*)$/m,
-  );
+  for (const linea of contenido.split("\n")) {
+    const coincidencia = linea.match(/^([A-Z0-9_]+)=(.*)$/);
 
-  if (!coincidencia || !coincidencia[1]) {
+    if (coincidencia) {
+      process.env[coincidencia[1]] = coincidencia[2].trim();
+    }
+  }
+
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
     throw new Error(
         "No se encontró TELEGRAM_BOT_TOKEN en functions/.secret.local.",
     );
   }
-
-  process.env.TELEGRAM_BOT_TOKEN = coincidencia[1].trim();
 }
 
 cargarVariablesEntorno();
