@@ -70,6 +70,19 @@ const BACKOFF_MINIMO_SEGUNDOS = 30;
 const MAX_DISPATCHES_CONCURRENTES = 5;
 const MAX_DISPATCHES_POR_SEGUNDO = 5;
 
+function generarIdCarrera(nombre, clave) {
+  return String(clave || nombre)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+}
+
+function decodificarParametroRuta(valor) {
+  return decodeURIComponent(valor);
+}
+
 exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
@@ -223,12 +236,78 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       });
     }
 
+    if (req.method === "GET" && ruta === "/estudiantes") {
+      const encabezado = req.headers.authorization || "";
+
+      if (!encabezado.startsWith("Bearer ")) {
+        return res.status(401).json({
+          ok: false,
+          mensaje: "Se requiere autenticación.",
+        });
+      }
+
+      const token = encabezado.substring(7);
+
+      try {
+        await autenticarConRol(token, ["administrador"]);
+      } catch (error) {
+        const erroresAutenticacion = {
+          TOKEN_REQUERIDO: "Se requiere autenticación.",
+          TOKEN_INVALIDO: "Token de autenticación inválido.",
+          USUARIO_NO_REGISTRADO:
+            "El usuario no está registrado en el sistema.",
+          USUARIO_INACTIVO: "El usuario está inactivo.",
+          ROL_NO_AUTORIZADO:
+            "No tienes permisos para consultar estudiantes.",
+        };
+
+        const mensaje = erroresAutenticacion[error.message];
+
+        if (mensaje) {
+          return res.status(
+              error.message === "ROL_NO_AUTORIZADO" ? 403 : 401,
+          ).json({ok: false, mensaje});
+        }
+
+        throw error;
+      }
+
+      const [estudiantesSnapshot, carreras] = await Promise.all([
+        db.collection("estudiantes").get(),
+        obtenerCarreras(),
+      ]);
+
+      const nombresCarrera = new Map(
+          carreras.map((carrera) => [carrera.id, carrera.nombre]),
+      );
+
+      const estudiantes = estudiantesSnapshot.docs.map((documento) => {
+        const estudiante = documento.data();
+
+        return {
+          numControl: estudiante.numControl || documento.id,
+          nombre: estudiante.nombre || "Sin nombre",
+          carrera: nombresCarrera.get(estudiante.carreraId) ||
+            estudiante.carreraId || "Sin carrera",
+          correo: estudiante.correoInstitucional || "Sin correo",
+          semestre: estudiante.semestreId || "Sin semestre",
+          grupo: estudiante.grupoId || "Sin grupo",
+        };
+      }).sort((primerEstudiante, segundoEstudiante) =>
+        primerEstudiante.numControl.localeCompare(
+            segundoEstudiante.numControl,
+        ),
+      );
+
+      return res.status(200).json({ok: true, estudiantes});
+    }
+
     const semestresMatch = ruta.match(
         /^\/carreras\/([^/]+)\/semestres$/,
     );
 
     if (req.method === "GET" && semestresMatch) {
-      const carreraId = semestresMatch[1];
+      const carreraId = decodificarParametroRuta(semestresMatch[1]);
 
       const semestres = await obtenerSemestres(carreraId);
 
@@ -244,8 +323,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
     );
 
     if (req.method === "GET" && gruposMatch) {
-      const carreraId = gruposMatch[1];
-      const semestreId = gruposMatch[2];
+      const carreraId = decodificarParametroRuta(gruposMatch[1]);
+      const semestreId = decodificarParametroRuta(gruposMatch[2]);
 
       const grupos = await obtenerGrupos(
           carreraId,
@@ -390,6 +469,28 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         throw error;
       }
 
+      if (resultado.nuevo && process.env.FUNCTIONS_EMULATOR === "true") {
+        const avisoPendiente = await obtenerAviso(resultado.avisoId);
+
+        for (
+          let indice = 0;
+          indice < avisoPendiente.totalLotes;
+          indice++
+        ) {
+          await procesarLote(resultado.avisoId, `lote-${indice}`);
+        }
+
+        const avisoProcesado = await obtenerAviso(resultado.avisoId);
+
+        resultado = {
+          ...resultado,
+          enviados: avisoProcesado.enviados,
+          errores: avisoProcesado.errores,
+          ambiguos: avisoProcesado.ambiguos,
+          estadoEnvio: avisoProcesado.estadoEnvio,
+        };
+      }
+
       if (resultado.nuevo && reemplazaAvisoId) {
         try {
           await ocultarAviso(reemplazaAvisoId);
@@ -462,16 +563,9 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       }
 
       const {
-        id,
         nombre,
         clave,
       } = req.body;
-
-      if (!id || !id.trim()) {
-        throw new Error(
-            "El identificador de la carrera es obligatorio.",
-        );
-      }
 
       if (!nombre || !nombre.trim()) {
         throw new Error(
@@ -479,23 +573,29 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         );
       }
 
-      const carreraExistente = await obtenerCarrera(
-          id.trim(),
-      );
-
-      if (carreraExistente) {
-        throw new Error(
-            "Ya existe una carrera con ese identificador.",
-        );
-      }
-
       // La clave (ISC, IGE, ...) es opcional: se conserva como dato
       // institucional, pero hoy ninguna parte de la app la consume,
       // así que no se obliga a capturarla.
       const claveNormalizada = clave ? String(clave).trim() : "";
+      const carreraId = generarIdCarrera(
+          nombre.trim(),
+          claveNormalizada,
+      );
+
+      if (!carreraId) {
+        throw new Error(
+            "No fue posible generar un identificador para la carrera.",
+        );
+      }
+
+      const carreraExistente = await obtenerCarrera(carreraId);
+
+      if (carreraExistente) {
+        throw new Error("Ya existe una carrera con esa clave o nombre.");
+      }
 
       await crearCarrera(
-          id.trim(),
+          carreraId,
           {
             nombre: nombre.trim(),
             clave: claveNormalizada,
@@ -505,7 +605,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       return res.status(201).json({
         ok: true,
         carrera: {
-          id: id.trim(),
+          id: carreraId,
           nombre: nombre.trim(),
           clave: claveNormalizada,
           activo: true,
@@ -522,7 +622,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       req.method === "POST" &&
       crearSemestreMatch
     ) {
-      const carreraId = crearSemestreMatch[1];
+      const carreraId = decodificarParametroRuta(crearSemestreMatch[1]);
 
       const encabezado =
         req.headers.authorization || "";
@@ -647,8 +747,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       req.method === "POST" &&
       crearGrupoMatch
     ) {
-      const carreraId = crearGrupoMatch[1];
-      const semestreId = crearGrupoMatch[2];
+      const carreraId = decodificarParametroRuta(crearGrupoMatch[1]);
+      const semestreId = decodificarParametroRuta(crearGrupoMatch[2]);
 
       const encabezado =
         req.headers.authorization || "";
@@ -785,7 +885,9 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       req.method === "PATCH" &&
       actualizarCarreraMatch
     ) {
-      const carreraId = actualizarCarreraMatch[1];
+      const carreraId = decodificarParametroRuta(
+          actualizarCarreraMatch[1],
+      );
 
       const encabezado =
         req.headers.authorization || "";
@@ -910,8 +1012,12 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       req.method === "PATCH" &&
       actualizarSemestreMatch
     ) {
-      const carreraId = actualizarSemestreMatch[1];
-      const semestreId = actualizarSemestreMatch[2];
+      const carreraId = decodificarParametroRuta(
+          actualizarSemestreMatch[1],
+      );
+      const semestreId = decodificarParametroRuta(
+          actualizarSemestreMatch[2],
+      );
 
       const encabezado =
         req.headers.authorization || "";
@@ -1061,9 +1167,15 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       req.method === "PATCH" &&
       actualizarGrupoMatch
     ) {
-      const carreraId = actualizarGrupoMatch[1];
-      const semestreId = actualizarGrupoMatch[2];
-      const grupoId = actualizarGrupoMatch[3];
+      const carreraId = decodificarParametroRuta(
+          actualizarGrupoMatch[1],
+      );
+      const semestreId = decodificarParametroRuta(
+          actualizarGrupoMatch[2],
+      );
+      const grupoId = decodificarParametroRuta(
+          actualizarGrupoMatch[3],
+      );
 
       const encabezado =
         req.headers.authorization || "";

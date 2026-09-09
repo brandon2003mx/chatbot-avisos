@@ -462,7 +462,8 @@ async function crearDestinatarios(avisoId, estudiantes) {
           coleccion.doc(telegramId),
           {
             telegramId,
-            enviado: false,
+            estado: "pendiente",
+            intentos: 0,
           },
       );
     }

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Administración de carreras del ITTG">
+  <title>Carreras | ITTG</title>
+  <link rel="icon" href="descarga.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
+  <script src="/__/firebase/init.js" defer></script>
+  <script src="firebase-init.js?v=2" defer></script>
+  <script src="auth.js" defer></script>
+  <script src="carreras.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-top">
+      <div class="brand">
+        <img class="brand-logo" src="descarga.png" alt="Logotipo del Instituto Tecnológico de Tuxtla Gutiérrez">
+        <div>
+          <p class="eyebrow">Difusión institucional</p>
+          <h1>Carreras</h1>
+          <p class="brand-subtitle">Organiza la estructura académica del instituto</p>
+        </div>
+      </div>
+      <div class="user-info">
+        <p id="coordinator" class="subtitle"></p>
+        <button id="logoutButton" class="button-outline" type="button">Cerrar sesión</button>
+      </div>
+    </div>
+    <nav class="top-nav" aria-label="Navegación principal">
+      <a href="index.html">Inicio</a>
+      <a href="index.html#resumen">Resumen</a>
+      <a href="index.html#distribucion">Distribución</a>
+      <a href="avisos.html">Redactar Aviso</a>
+      <a href="administrar_avisos.html">Gestión de Avisos</a>
+      <a class="active" href="carreras.html">Carreras</a>
+      <a href="estudiantes.html">Estudiantes</a>
+    </nav>
+  </header>
+
+  <main class="main-narrow">
+    <div id="status" class="message" role="status" hidden></div>
+
+    <section class="panel panel-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Configuración académica</p>
+          <h2 id="formTitle">Registrar carrera</h2>
+          <p id="formDescription">Agrega las carreras disponibles para segmentar los avisos institucionales.</p>
+        </div>
+      </div>
+      <form id="carreraForm" class="form-grid">
+        <div>
+          <label for="nombre">Nombre de la carrera</label>
+          <input id="nombre" name="nombre" type="text" placeholder="Ej. Ingeniería en Sistemas Computacionales" maxlength="120" required>
+        </div>
+        <div>
+          <label for="clave">Clave institucional <span class="optional-label">Opcional</span></label>
+          <input id="clave" name="clave" type="text" placeholder="Ej. ISC" maxlength="20">
+        </div>
+        <div class="form-action">
+          <button id="submitCarreraButton" class="primary-button" type="submit">Crear carrera</button>
+          <button id="cancelEditButton" class="button-outline dark" type="button" hidden>Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel panel-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Catálogo</p>
+          <h2>Carreras registradas</h2>
+        </div>
+        <button id="refreshCarrerasButton" class="button-outline dark" type="button">Actualizar lista</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Carrera</th><th>Clave</th><th>Estado</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="carrerasTable">
+            <tr><td colspan="4" class="table-empty">Cargando carreras...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="deleteCarreraDialog" class="confirm-dialog">
+    <div class="confirm-dialog-body">
+      <p class="confirm-dialog-icon">⚠️</p>
+      <h2>Eliminar carrera del catálogo</h2>
+      <p>La carrera dejará de estar disponible para nuevos registros y avisos. Los datos ya registrados se conservarán.</p>
+      <div class="form-actions">
+        <button id="confirmDeleteCarreraButton" class="primary-button danger" type="button">Sí, eliminar carrera</button>
+        <button id="cancelDeleteCarreraButton" class="button-outline dark" type="button">Cancelar</button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -30,12 +30,13 @@ function fillSelect(select, items, placeholder) {
 
 function updateVisibleFields() {
   const tipo = tipoSegmentacionSelect.value;
+  const segmentacionPorCarrera = tipo !== 'todos';
   carreraField.hidden = tipo === 'todos';
-  semestreField.hidden = tipo === 'todos' || tipo === 'carrera';
-  grupoField.hidden = tipo !== 'grupo';
-  carreraSelect.required = tipo !== 'todos';
-  semestreSelect.required = tipo === 'semestre' || tipo === 'grupo';
-  grupoSelect.required = tipo === 'grupo';
+  semestreField.hidden = !segmentacionPorCarrera;
+  grupoField.hidden = !segmentacionPorCarrera;
+  carreraSelect.required = segmentacionPorCarrera;
+  semestreSelect.required = false;
+  grupoSelect.required = false;
 }
 
 async function loadCarreras() {
@@ -232,7 +233,12 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
   // debe reutilizar esta misma clave, no generar una nueva.
   const idempotencyKey = crypto.randomUUID();
   const form = new FormData(formElement);
-  const tipoSegmentacion = form.get('tipoSegmentacion');
+  const tipoSeleccionado = form.get('tipoSegmentacion');
+  const tipoSegmentacion = tipoSeleccionado === 'carrera' && grupoSelect.value ?
+    'grupo' :
+    tipoSeleccionado === 'carrera' && semestreSelect.value ?
+      'semestre' :
+      tipoSeleccionado;
   const body = {
     titulo: form.get('titulo'),
     contenido: form.get('contenido'),

@@ -95,16 +95,41 @@ async function crearCarrera(
     carreraId,
     datos,
 ) {
-  await db
-      .collection("carreras")
-      .doc(carreraId)
-      .set({
+  const carreraRef = db.collection("carreras").doc(carreraId);
+  const lote = db.batch();
+
+  lote.set(
+      carreraRef,
+      {
         nombre: datos.nombre,
         clave: datos.clave || "",
         activo: true,
         fechaCreacion: new Date(),
         fechaActualizacion: new Date(),
+      },
+  );
+
+  for (let numero = 1; numero <= 9; numero++) {
+    const semestreRef = carreraRef.collection("semestres").doc(String(numero));
+
+    lote.set(semestreRef, {
+      numero,
+      activo: true,
+      fechaCreacion: new Date(),
+      fechaActualizacion: new Date(),
+    });
+
+    for (const nombre of ["A", "B", "C"]) {
+      lote.set(semestreRef.collection("grupos").doc(nombre), {
+        nombre,
+        activo: true,
+        fechaCreacion: new Date(),
+        fechaActualizacion: new Date(),
       });
+    }
+  }
+
+  await lote.commit();
 }
 
 /**
