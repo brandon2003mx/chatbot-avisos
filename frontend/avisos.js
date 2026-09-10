@@ -132,7 +132,12 @@ async function precargarEdicion(avisoId) {
     activarModoEdicion();
     tituloInput.value = aviso.titulo;
     contenidoInput.value = aviso.contenido;
-    tipoSegmentacionSelect.value = aviso.tipoSegmentacion;
+    // El desplegable solo ofrece "todos" y "carrera": los tipos
+    // "semestre" y "grupo" se deducen al enviar, según se llenen esos
+    // campos. Asignar aquí el tipo guardado tal cual dejaría el
+    // desplegable vacío y el envío fallaría.
+    tipoSegmentacionSelect.value =
+      aviso.tipoSegmentacion === 'todos' ? 'todos' : 'carrera';
     updateVisibleFields();
     if (aviso.tipoSegmentacion !== 'todos' && aviso.carreraId) {
       carreraSelect.value = aviso.carreraId;
