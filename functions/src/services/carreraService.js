@@ -82,19 +82,99 @@ async function obtenerCarrera(carreraId) {
   };
 }
 
+const SEMESTRES_POR_DEFECTO = 9;
+const GRUPOS_POR_DEFECTO = ["A", "B", "C"];
+
+// Límites que mantienen el lote de creación muy por debajo del máximo
+// de 500 escrituras de Firestore: 1 + 12 + 12 * 10 = 133.
+const MAX_SEMESTRES = 12;
+const MAX_GRUPOS = 10;
+
+const NOMBRE_GRUPO_REGEX = /^[A-Z0-9]{1,5}$/;
+
 /**
- * Crea una carrera.
+ * Valida y normaliza la estructura académica con la que nace una
+ * carrera. Acepta los grupos como arreglo o como texto separado por
+ * comas ("A, B, C"); los pasa a mayúsculas y quita repetidos.
+ *
+ * @param {*} numeroSemestres Cantidad de semestres (vacío = default).
+ * @param {*} grupos Grupos por semestre (vacío = default).
+ * @return {{numeroSemestres: number, grupos: Array<string>}}
+ */
+function normalizarEstructura(numeroSemestres, grupos) {
+  let semestres = SEMESTRES_POR_DEFECTO;
+
+  if (
+    numeroSemestres !== undefined &&
+    numeroSemestres !== null &&
+    numeroSemestres !== ""
+  ) {
+    semestres = Number(numeroSemestres);
+
+    if (
+      !Number.isInteger(semestres) ||
+      semestres < 1 ||
+      semestres > MAX_SEMESTRES
+    ) {
+      throw new Error(
+          "El número de semestres debe ser un entero entre 1 y 12.",
+      );
+    }
+  }
+
+  let listaGrupos = GRUPOS_POR_DEFECTO;
+
+  if (grupos !== undefined && grupos !== null && grupos !== "") {
+    const crudos = Array.isArray(grupos) ?
+      grupos :
+      String(grupos).split(",");
+
+    listaGrupos = [...new Set(
+        crudos
+            .map((grupo) => String(grupo).trim().toUpperCase())
+            .filter((grupo) => grupo !== ""),
+    )];
+
+    if (listaGrupos.length === 0) {
+      throw new Error("Debes indicar al menos un grupo.");
+    }
+
+    if (listaGrupos.length > MAX_GRUPOS) {
+      throw new Error("No puede haber más de 10 grupos.");
+    }
+
+    if (!listaGrupos.every((grupo) => NOMBRE_GRUPO_REGEX.test(grupo))) {
+      throw new Error(
+          "Los grupos solo pueden tener letras o números " +
+          "(máximo 5 caracteres).",
+      );
+    }
+  }
+
+  return {numeroSemestres: semestres, grupos: listaGrupos};
+}
+
+/**
+ * Crea una carrera junto con su estructura académica completa
+ * (semestres y grupos), en un solo lote atómico: o se crea todo o
+ * nada, para que nunca quede una carrera sin semestres — un estudiante
+ * que la eligiera en el bot no podría terminar su registro.
  *
  * @param {string} carreraId Identificador de la carrera.
- * @param {Object} datos Datos de la carrera. `clave` es opcional
- *   (se guarda como cadena vacía si no se proporciona): se conserva
- *   como dato institucional, pero la app no la consume.
+ * @param {Object} datos Datos de la carrera. `clave` es opcional.
+ *   `numeroSemestres` y `grupos` son opcionales y, si no vienen, se
+ *   usan 9 semestres con grupos A, B y C.
  * @return {Promise<void>}
  */
 async function crearCarrera(
     carreraId,
     datos,
 ) {
+  const {numeroSemestres, grupos} = normalizarEstructura(
+      datos.numeroSemestres,
+      datos.grupos,
+  );
+
   const carreraRef = db.collection("carreras").doc(carreraId);
   const lote = db.batch();
 
@@ -109,7 +189,7 @@ async function crearCarrera(
       },
   );
 
-  for (let numero = 1; numero <= 9; numero++) {
+  for (let numero = 1; numero <= numeroSemestres; numero++) {
     const semestreRef = carreraRef.collection("semestres").doc(String(numero));
 
     lote.set(semestreRef, {
@@ -119,7 +199,7 @@ async function crearCarrera(
       fechaActualizacion: new Date(),
     });
 
-    for (const nombre of ["A", "B", "C"]) {
+    for (const nombre of grupos) {
       lote.set(semestreRef.collection("grupos").doc(nombre), {
         nombre,
         activo: true,
@@ -369,6 +449,7 @@ module.exports = {
   obtenerCarrera,
   obtenerSemestres,
   obtenerGrupos,
+  normalizarEstructura,
   crearCarrera,
   crearSemestre,
   crearGrupo,

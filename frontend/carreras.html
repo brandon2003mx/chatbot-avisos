@@ -61,6 +61,20 @@
           <label for="clave">Clave institucional <span class="optional-label">Opcional</span></label>
           <input id="clave" name="clave" type="text" placeholder="Ej. ISC" maxlength="20">
         </div>
+        <div id="estructuraField" class="field-group">
+          <div class="field-full">
+            <p class="field-group-label">Estructura académica</p>
+          </div>
+          <div>
+            <label for="numeroSemestres">Número de semestres</label>
+            <input id="numeroSemestres" name="numeroSemestres" type="number" min="1" max="12" step="1" value="9" required>
+          </div>
+          <div>
+            <label for="grupos">Grupos por semestre</label>
+            <input id="grupos" name="grupos" type="text" value="A, B, C" placeholder="Ej. A, B, C" required>
+          </div>
+          <p class="field-full field-hint">Todos los semestres se crean con estos grupos, separados por comas. Solo aplica al crear la carrera.</p>
+        </div>
         <div class="form-action">
           <button id="submitCarreraButton" class="primary-button" type="submit">Crear carrera</button>
           <button id="cancelEditButton" class="button-outline dark" type="button" hidden>Cancelar</button>

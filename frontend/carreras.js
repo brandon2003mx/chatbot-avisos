@@ -40,8 +40,19 @@ async function loadCarreras() {
 
 document.getElementById('refreshCarrerasButton').addEventListener('click', loadCarreras);
 
+// La estructura (semestres y grupos) solo se define al crear la carrera:
+// editarla implicaría borrar o agregar semestres existentes. Al ocultar
+// los campos también se deshabilitan, para que el navegador no intente
+// validar controles que el usuario no puede ver.
+function mostrarEstructura(visible) {
+  document.getElementById('estructuraField').hidden = !visible;
+  document.getElementById('numeroSemestres').disabled = !visible;
+  document.getElementById('grupos').disabled = !visible;
+}
+
 function cancelarEdicion() {
   carreraEnEdicion = null;
+  mostrarEstructura(true);
   document.getElementById('carreraForm').reset();
   document.getElementById('formTitle').textContent = 'Registrar carrera';
   document.getElementById('formDescription').textContent = 'Agrega las carreras disponibles para segmentar los avisos institucionales.';
@@ -59,6 +70,11 @@ document.getElementById('carreraForm').addEventListener('submit', async event =>
     nombre: formData.get('nombre').trim(),
     clave: formData.get('clave').trim(),
   };
+
+  if (!carreraEnEdicion) {
+    carrera.numeroSemestres = Number(formData.get('numeroSemestres'));
+    carrera.grupos = formData.get('grupos');
+  }
 
   submitButton.disabled = true;
 
@@ -86,6 +102,7 @@ document.getElementById('carrerasTable').addEventListener('click', event => {
   if (editButton) {
     const row = editButton.closest('tr');
     carreraEnEdicion = editButton.dataset.editId;
+    mostrarEstructura(false);
     document.getElementById('nombre').value = row.cells[0].textContent.trim();
     document.getElementById('clave').value = row.cells[1].textContent.trim() === 'Sin clave' ? '' : row.cells[1].textContent.trim();
     document.getElementById('formTitle').textContent = 'Editar carrera';
