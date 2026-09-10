@@ -12,7 +12,7 @@ function cargarVariablesEntorno() {
   const contenido = fs.readFileSync(".secret.local", "utf8");
 
   for (const linea of contenido.split("\n")) {
-     const coincidencia = linea.trim().match(/^([A-Z0-9_]+)=(.*)$/);
+    const coincidencia = linea.trim().match(/^([A-Z0-9_]+)=(.*)$/);
 
     if (coincidencia) {
       process.env[coincidencia[1]] = coincidencia[2].trim();

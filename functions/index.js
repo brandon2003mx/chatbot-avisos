@@ -70,6 +70,16 @@ const BACKOFF_MINIMO_SEGUNDOS = 30;
 const MAX_DISPATCHES_CONCURRENTES = 5;
 const MAX_DISPATCHES_POR_SEGUNDO = 5;
 
+/**
+ * Genera el ID de documento de una carrera a partir de su clave
+ * (o de su nombre, si no tiene clave): quita acentos, pasa a
+ * min\u00fasculas y sustituye todo lo que no sea alfanum\u00e9rico por
+ * guiones.
+ *
+ * @param {string} nombre Nombre de la carrera.
+ * @param {string} clave Clave institucional, opcional.
+ * @return {string} Identificador utilizable como ID de documento.
+ */
 function generarIdCarrera(nombre, clave) {
   return String(clave || nombre)
       .normalize("NFD")
@@ -79,6 +89,14 @@ function generarIdCarrera(nombre, clave) {
       .replace(/^-|-$/g, "");
 }
 
+/**
+ * Decodifica un segmento de la ruta. Los IDs viajan codificados
+ * desde el frontend (`encodeURIComponent`), as\u00ed que hay que
+ * revertirlo antes de usarlos contra Firestore.
+ *
+ * @param {string} valor Segmento tal como viene en la URL.
+ * @return {string} Segmento decodificado.
+ */
 function decodificarParametroRuta(valor) {
   return decodeURIComponent(valor);
 }
@@ -1538,6 +1556,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "El identificador de la carrera es obligatorio.",
       "El nombre de la carrera es obligatorio.",
       "Ya existe una carrera con ese identificador.",
+      "Ya existe una carrera con esa clave o nombre.",
       "El semestre no existe o está inactivo.",
       "El identificador del semestre es obligatorio.",
       "El número del semestre es obligatorio.",
