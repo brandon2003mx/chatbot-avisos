@@ -83,75 +83,66 @@ async function obtenerCarrera(carreraId) {
 }
 
 const SEMESTRES_POR_DEFECTO = 9;
-const GRUPOS_POR_DEFECTO = ["A", "B", "C"];
+const GRUPOS_POR_DEFECTO = 3;
 
 // Límites que mantienen el lote de creación muy por debajo del máximo
 // de 500 escrituras de Firestore: 1 + 12 + 12 * 10 = 133.
 const MAX_SEMESTRES = 12;
 const MAX_GRUPOS = 10;
 
-const NOMBRE_GRUPO_REGEX = /^[A-Z0-9]{1,5}$/;
+/**
+ * Convierte un valor opcional en un entero dentro de un rango.
+ *
+ * @param {*} valor Valor recibido (vacío = usar el default).
+ * @param {number} porDefecto Valor cuando no se recibe nada.
+ * @param {number} maximo Máximo permitido (el mínimo es 1).
+ * @param {string} mensajeError Error si el valor no es válido.
+ * @return {number}
+ */
+function enteroEnRango(valor, porDefecto, maximo, mensajeError) {
+  if (valor === undefined || valor === null || valor === "") {
+    return porDefecto;
+  }
+
+  const numero = Number(valor);
+
+  if (!Number.isInteger(numero) || numero < 1 || numero > maximo) {
+    throw new Error(mensajeError);
+  }
+
+  return numero;
+}
 
 /**
- * Valida y normaliza la estructura académica con la que nace una
- * carrera. Acepta los grupos como arreglo o como texto separado por
- * comas ("A, B, C"); los pasa a mayúsculas y quita repetidos.
+ * Valida la estructura académica con la que nace una carrera. Los
+ * grupos se generan como letras consecutivas a partir de su cantidad
+ * (3 = A, B, C), para que no haya nombres mal escritos.
  *
- * @param {*} numeroSemestres Cantidad de semestres (vacío = default).
- * @param {*} grupos Grupos por semestre (vacío = default).
+ * @param {*} numeroSemestres Cantidad de semestres (vacío = 9).
+ * @param {*} numeroGrupos Grupos por semestre (vacío = 3).
  * @return {{numeroSemestres: number, grupos: Array<string>}}
  */
-function normalizarEstructura(numeroSemestres, grupos) {
-  let semestres = SEMESTRES_POR_DEFECTO;
+function normalizarEstructura(numeroSemestres, numeroGrupos) {
+  const semestres = enteroEnRango(
+      numeroSemestres,
+      SEMESTRES_POR_DEFECTO,
+      MAX_SEMESTRES,
+      "El número de semestres debe ser un entero entre 1 y 12.",
+  );
 
-  if (
-    numeroSemestres !== undefined &&
-    numeroSemestres !== null &&
-    numeroSemestres !== ""
-  ) {
-    semestres = Number(numeroSemestres);
+  const cantidadGrupos = enteroEnRango(
+      numeroGrupos,
+      GRUPOS_POR_DEFECTO,
+      MAX_GRUPOS,
+      "El número de grupos debe ser un entero entre 1 y 10.",
+  );
 
-    if (
-      !Number.isInteger(semestres) ||
-      semestres < 1 ||
-      semestres > MAX_SEMESTRES
-    ) {
-      throw new Error(
-          "El número de semestres debe ser un entero entre 1 y 12.",
-      );
-    }
-  }
+  const grupos = Array.from(
+      {length: cantidadGrupos},
+      (_, indice) => String.fromCharCode(65 + indice),
+  );
 
-  let listaGrupos = GRUPOS_POR_DEFECTO;
-
-  if (grupos !== undefined && grupos !== null && grupos !== "") {
-    const crudos = Array.isArray(grupos) ?
-      grupos :
-      String(grupos).split(",");
-
-    listaGrupos = [...new Set(
-        crudos
-            .map((grupo) => String(grupo).trim().toUpperCase())
-            .filter((grupo) => grupo !== ""),
-    )];
-
-    if (listaGrupos.length === 0) {
-      throw new Error("Debes indicar al menos un grupo.");
-    }
-
-    if (listaGrupos.length > MAX_GRUPOS) {
-      throw new Error("No puede haber más de 10 grupos.");
-    }
-
-    if (!listaGrupos.every((grupo) => NOMBRE_GRUPO_REGEX.test(grupo))) {
-      throw new Error(
-          "Los grupos solo pueden tener letras o números " +
-          "(máximo 5 caracteres).",
-      );
-    }
-  }
-
-  return {numeroSemestres: semestres, grupos: listaGrupos};
+  return {numeroSemestres: semestres, grupos};
 }
 
 /**
@@ -162,8 +153,8 @@ function normalizarEstructura(numeroSemestres, grupos) {
  *
  * @param {string} carreraId Identificador de la carrera.
  * @param {Object} datos Datos de la carrera. `clave` es opcional.
- *   `numeroSemestres` y `grupos` son opcionales y, si no vienen, se
- *   usan 9 semestres con grupos A, B y C.
+ *   `numeroSemestres` y `numeroGrupos` son opcionales y, si no
+ *   vienen, se usan 9 semestres con grupos A, B y C.
  * @return {Promise<void>}
  */
 async function crearCarrera(
@@ -172,7 +163,7 @@ async function crearCarrera(
 ) {
   const {numeroSemestres, grupos} = normalizarEstructura(
       datos.numeroSemestres,
-      datos.grupos,
+      datos.numeroGrupos,
   );
 
   const carreraRef = db.collection("carreras").doc(carreraId);

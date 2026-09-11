@@ -585,7 +585,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         nombre,
         clave,
         numeroSemestres,
-        grupos,
+        numeroGrupos,
       } = req.body;
 
       if (!nombre || !nombre.trim()) {
@@ -598,7 +598,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       // inválido nunca deje una carrera a medio crear.
       const estructura = normalizarEstructura(
           numeroSemestres,
-          grupos,
+          numeroGrupos,
       );
 
       // La clave (ISC, IGE, ...) es opcional: se conserva como dato
@@ -628,7 +628,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
             nombre: nombre.trim(),
             clave: claveNormalizada,
             numeroSemestres: estructura.numeroSemestres,
-            grupos: estructura.grupos,
+            numeroGrupos: estructura.grupos.length,
           },
       );
 
@@ -1572,10 +1572,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "Ya existe una carrera con ese identificador.",
       "Ya existe una carrera con esa clave o nombre.",
       "El número de semestres debe ser un entero entre 1 y 12.",
-      "Debes indicar al menos un grupo.",
-      "No puede haber más de 10 grupos.",
-      "Los grupos solo pueden tener letras o números " +
-        "(máximo 5 caracteres).",
+      "El número de grupos debe ser un entero entre 1 y 10.",
       "El semestre no existe o está inactivo.",
       "El identificador del semestre es obligatorio.",
       "El número del semestre es obligatorio.",

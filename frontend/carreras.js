@@ -45,15 +45,37 @@ document.getElementById('refreshCarrerasButton').addEventListener('click', loadC
 // los campos también se deshabilitan, para que el navegador no intente
 // validar controles que el usuario no puede ver.
 function mostrarEstructura(visible) {
-  document.getElementById('estructuraField').hidden = !visible;
+  document.querySelectorAll('.estructura-field').forEach(campo => {
+    campo.hidden = !visible;
+  });
   document.getElementById('numeroSemestres').disabled = !visible;
-  document.getElementById('grupos').disabled = !visible;
+  document.getElementById('numeroGrupos').disabled = !visible;
 }
+
+// Los grupos son letras consecutivas (3 = A, B, C); el texto de apoyo
+// muestra cuáles se van a crear conforme se cambia la cantidad.
+function actualizarVistaGrupos() {
+  const cantidad = Number(document.getElementById('numeroGrupos').value);
+  const preview = document.getElementById('gruposPreview');
+
+  if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10) {
+    preview.textContent = 'Indica entre 1 y 10 grupos.';
+    return;
+  }
+
+  const letras = Array.from({ length: cantidad }, (_, indice) => String.fromCharCode(65 + indice));
+  preview.textContent = cantidad === 1
+    ? 'Se creará el grupo A.'
+    : `Se crearán los grupos ${letras.slice(0, -1).join(', ')} y ${letras.at(-1)}.`;
+}
+
+document.getElementById('numeroGrupos').addEventListener('input', actualizarVistaGrupos);
 
 function cancelarEdicion() {
   carreraEnEdicion = null;
   mostrarEstructura(true);
   document.getElementById('carreraForm').reset();
+  actualizarVistaGrupos();
   document.getElementById('formTitle').textContent = 'Registrar carrera';
   document.getElementById('formDescription').textContent = 'Agrega las carreras disponibles para segmentar los avisos institucionales.';
   document.getElementById('submitCarreraButton').textContent = 'Crear carrera';
@@ -73,7 +95,7 @@ document.getElementById('carreraForm').addEventListener('submit', async event =>
 
   if (!carreraEnEdicion) {
     carrera.numeroSemestres = Number(formData.get('numeroSemestres'));
-    carrera.grupos = formData.get('grupos');
+    carrera.numeroGrupos = Number(formData.get('numeroGrupos'));
   }
 
   submitButton.disabled = true;
