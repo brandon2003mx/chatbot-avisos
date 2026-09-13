@@ -8,7 +8,7 @@
  *
  * @type {string}
  */
-const CORREO_REMITENTE = "Avisos ITTG <no-reply@avisosittg.lat>";
+const CORREO_REMITENTE = "Chatbot Avisos <no-reply@avisosittg.lat>";
 
 /**
  * Envía un correo de texto plano usando la API de Resend.

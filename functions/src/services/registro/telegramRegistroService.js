@@ -231,7 +231,7 @@ async function enviarCodigoVerificacion(telegramId, pendiente) {
   try {
     await enviarCorreo(
         correo,
-        "Código de verificación - Avisos ITTG",
+        "Código de verificación - Chatbot Avisos",
         `Tu código de verificación es: ${codigo}\n\n` +
         "Escríbelo en el chat del bot para terminar tu registro.\n" +
         "El código vence en 10 minutos.\n\n" +
