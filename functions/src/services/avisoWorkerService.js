@@ -153,8 +153,9 @@ async function reclamarDestinatario(avisoId, telegramId, loteId) {
  *
  * Existe exactamente un "dueño" del claim de un destinatario en un
  * momento dado (reclamarDestinatario solo transiciona
- * pendiente→procesando una vez; nunca regresa un destinatario a
- * "procesando" después). Por eso, si al momento de escribir el
+ * pendiente→procesando; la única forma de volver a "procesando" es
+ * que el propio dueño lo regrese a "pendiente" tras un 429 y suelte
+ * el claim). Por eso, si al momento de escribir el
  * resultado el estado ya no es "procesando" (porque su lease
  * venció y otro worker ya lo marcó "ambiguo"), significa que este
  * worker perdió su claim: la escritura se descarta en vez de
@@ -193,9 +194,9 @@ async function finalizarSiSigueEnProceso(avisoId, telegramId, datos) {
  * El resultado de Telegram (éxito o fallo confirmado) nunca se ve
  * alterado por un fallo posterior al registrar el resultado en
  * Firestore: "Telegram tuvo éxito" y "Firestore tuvo éxito" son
- * cosas distintas. Un 429 no absorbido por la librería se relanza
- * para que se reintente la tarea completa, sin marcar nada de este
- * destinatario.
+ * cosas distintas. Un 429 no absorbido por la librería regresa al
+ * destinatario a "pendiente" y se relanza para que se reintente la
+ * tarea completa.
  *
  * @param {string} avisoId ID del aviso.
  * @param {string} loteId ID del lote.
@@ -279,6 +280,26 @@ async function procesarDestinatario(
         "absorbido internamente; se reintentará la tarea completa:",
         errorEnvio.message,
     );
+
+    // Un 429 confirma que Telegram NO entregó el mensaje, así que el
+    // destinatario vuelve a "pendiente" para que el reintento lo
+    // envíe. Si se quedara "procesando", el reintento se lo saltaría
+    // y al vencer el lease terminaría "ambiguo", sin recibir nunca
+    // el aviso.
+    try {
+      await finalizarSiSigueEnProceso(avisoId, telegramId, {
+        estado: "pendiente",
+        fechaUltimoIntento: new Date(),
+      });
+    } catch (errorBookkeeping) {
+      console.error(
+          `avisoId=${avisoId} loteId=${loteId} ` +
+          `telegramId=${telegramId} no se pudo regresar a ` +
+          "\"pendiente\" tras el 429; al vencer el lease quedará " +
+          "\"ambiguo\":",
+          errorBookkeeping.message,
+      );
+    }
 
     throw errorEnvio;
   }
