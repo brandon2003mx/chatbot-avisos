@@ -1558,7 +1558,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "El encabezado Idempotency-Key es obligatorio.",
       "El encabezado Idempotency-Key no es válido.",
       "El título es obligatorio.",
+      "El título no puede tener más de 120 caracteres.",
       "El contenido es obligatorio.",
+      "El mensaje supera el límite de 4096 caracteres que " +
+        "permite Telegram.",
       "El tipo de segmentación no es válido.",
       "La carrera es obligatoria para esta segmentación.",
       "El semestre es obligatorio para esta segmentación.",

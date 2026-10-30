@@ -29,22 +29,36 @@ function formatFecha(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX');
 }
 
+// La segmentación se parte en la carrera (que va en la etiqueta) y los
+// detalles que la acotan, cada uno en su propio renglón: en una sola
+// línea, "Carrera · 9° · Grupo A" se come el ancho de la tabla.
 function formatSegmento(aviso) {
-  if (aviso.tipoSegmentacion === 'todos') return 'Todos los estudiantes';
-  if (aviso.tipoSegmentacion === 'carrera') {
-    return aviso.carreraNombre || SEGMENTO_LABELS.carrera;
+  if (aviso.tipoSegmentacion === 'todos') {
+    return { carrera: 'Todos los estudiantes', detalles: [] };
   }
-  if (aviso.tipoSegmentacion === 'semestre') {
-    return aviso.carreraNombre
-      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° semestre`
-      : SEGMENTO_LABELS.semestre;
+
+  // Los avisos viejos pueden no traer copiado el nombre de la carrera.
+  const carrera = aviso.carreraNombre || SEGMENTO_LABELS.carrera;
+  const detalles = [];
+
+  if (aviso.tipoSegmentacion === 'semestre' || aviso.tipoSegmentacion === 'grupo') {
+    detalles.push(`${aviso.semestreNumero}° semestre`);
   }
+
   if (aviso.tipoSegmentacion === 'grupo') {
-    return aviso.carreraNombre
-      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° · Grupo ${aviso.grupoNombre || aviso.grupoId}`
-      : SEGMENTO_LABELS.grupo;
+    detalles.push(`Grupo ${aviso.grupoNombre || aviso.grupoId}`);
   }
-  return aviso.tipoSegmentacion;
+
+  return { carrera: carrera || aviso.tipoSegmentacion, detalles };
+}
+
+function renderSegmento(aviso) {
+  const { carrera, detalles } = formatSegmento(aviso);
+  const lineas = detalles
+    .map(detalle => `<div class="table-subtext">${escapeHtml(detalle)}</div>`)
+    .join('');
+
+  return `<span class="notice-badge carrera-badge">${escapeHtml(carrera)}</span>${lineas}`;
 }
 
 function renderAvisos(avisos) {
@@ -67,7 +81,7 @@ function renderAvisos(avisos) {
       <strong>${escapeHtml(aviso.titulo)}</strong>
       <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${formatFecha(aviso.fechaCreacion)}</div>
     </td>
-    <td><span class="notice-badge">${escapeHtml(formatSegmento(aviso))}</span></td>
+    <td class="segmento-celda">${renderSegmento(aviso)}</td>
     <td>${destinatarios}</td>
     <td>${enviados}</td>
     <td>${leidos}<span class="table-subtext">${porcentajeLeido}</span></td>

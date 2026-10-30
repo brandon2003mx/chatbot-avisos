@@ -41,6 +41,25 @@ const TAMANO_LOTE = 50;
 const MARCADOR_ESTRUCTURA_LISTA = "_estructura_lista";
 
 /**
+ * Largo máximo del título. No es un límite de Telegram, sino una
+ * medida para que la tabla del panel y el encabezado del mensaje
+ * sigan siendo legibles.
+ *
+ * @type {number}
+ */
+const MAX_TITULO = 120;
+
+/**
+ * Largo máximo de un mensaje de texto en Telegram. El aviso se
+ * envía como `📢 {titulo}\n\n{contenido}` (ver avisoWorkerService),
+ * así que el límite aplica a esa cadena completa, no al contenido
+ * por separado.
+ *
+ * @type {number}
+ */
+const TELEGRAM_MENSAJE_MAX = 4096;
+
+/**
  * Valida los datos básicos de un aviso.
  *
  * @param {Object} aviso Datos del aviso.
@@ -57,8 +76,27 @@ function validarDatosAviso(aviso) {
     throw new Error("El título es obligatorio.");
   }
 
+  if (aviso.titulo.trim().length > MAX_TITULO) {
+    throw new Error(
+        "El título no puede tener más de 120 caracteres.",
+    );
+  }
+
   if (!aviso.contenido || !aviso.contenido.trim()) {
     throw new Error("El contenido es obligatorio.");
+  }
+
+  // El panel ya lo revisa, pero el límite se vuelve a verificar aquí
+  // porque es el que de verdad decide si Telegram acepta el mensaje:
+  // si se pasa, el envío fallaría para todos los destinatarios.
+  const mensaje =
+    `📢 ${aviso.titulo.trim()}\n\n${aviso.contenido.trim()}`;
+
+  if (mensaje.length > TELEGRAM_MENSAJE_MAX) {
+    throw new Error(
+        "El mensaje supera el límite de 4096 caracteres que " +
+        "permite Telegram.",
+    );
   }
 
   if (!tiposValidos.includes(aviso.tipoSegmentacion)) {
