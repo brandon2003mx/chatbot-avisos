@@ -3,7 +3,6 @@ bindLogout('logoutButton', 'login.html');
 authReady.then(async user => {
   if (!user) return;
   mostrarRolUsuario('coordinator', user.email);
-  loadAvisos();
   await loadCarreras();
   if (reemplazaAvisoId) {
     await precargarEdicion(reemplazaAvisoId);
@@ -157,72 +156,6 @@ async function precargarEdicion(avisoId) {
   }
 }
 
-function formatFecha(value) {
-  if (!value) return '—';
-  const seconds = value._seconds ?? value.seconds;
-  const date = seconds !== undefined ? new Date(seconds * 1000) : new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX');
-}
-
-function formatSegmento(aviso) {
-  if (aviso.tipoSegmentacion === 'todos') return 'Todos los estudiantes';
-  if (aviso.tipoSegmentacion === 'carrera') {
-    return aviso.carreraNombre || SEGMENTO_LABELS.carrera;
-  }
-  if (aviso.tipoSegmentacion === 'semestre') {
-    return aviso.carreraNombre
-      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° semestre`
-      : SEGMENTO_LABELS.semestre;
-  }
-  if (aviso.tipoSegmentacion === 'grupo') {
-    return aviso.carreraNombre
-      ? `${aviso.carreraNombre} · ${aviso.semestreNumero}° · Grupo ${aviso.grupoNombre || aviso.grupoId}`
-      : SEGMENTO_LABELS.grupo;
-  }
-  return aviso.tipoSegmentacion;
-}
-
-function renderAvisos(avisos) {
-  const tbody = document.getElementById('avisosTable');
-  if (!avisos.length) {
-    tbody.innerHTML = '<tr><td colspan="6">Aún no hay avisos registrados.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = avisos.map(aviso => `<tr>
-    <td>${escapeHtml(aviso.titulo)}</td>
-    <td><span class="notice-badge">${escapeHtml(formatSegmento(aviso))}</span></td>
-    <td>${Number(aviso.destinatarios || 0)}</td>
-    <td>${Number(aviso.enviados || 0)}</td>
-    <td>${Number(aviso.errores || 0)}</td>
-    <td>${formatFecha(aviso.fechaCreacion)}</td>
-  </tr>`).join('');
-}
-
-const POLL_INTERVAL_MS = 5000;
-const ESTADOS_NO_TERMINALES = ['pendiente', 'procesando'];
-let pollTimeoutId = null;
-
-function tieneAvisosEnProceso(avisos) {
-  return avisos.some(aviso => ESTADOS_NO_TERMINALES.includes(aviso.estadoEnvio));
-}
-
-async function loadAvisos() {
-  if (pollTimeoutId) {
-    clearTimeout(pollTimeoutId);
-    pollTimeoutId = null;
-  }
-  try {
-    const { avisos } = await apiRequest('/avisos');
-    renderAvisos(avisos);
-    if (tieneAvisosEnProceso(avisos)) {
-      pollTimeoutId = setTimeout(loadAvisos, POLL_INTERVAL_MS);
-    }
-  } catch (error) {
-    document.getElementById('avisosTable').innerHTML = '<tr><td colspan="6">No fue posible cargar los avisos.</td></tr>';
-    showMessage(error.message);
-  }
-}
-
 document.getElementById('avisoForm').addEventListener('submit', async event => {
   event.preventDefault();
   const formElement = event.currentTarget;
@@ -263,14 +196,13 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
       body: JSON.stringify(body),
     });
     const mensajeExito = reemplazaAvisoId
-      ? `Aviso corregido y puesto en procesamiento para ${payload.destinatarios} destinatario(s). El original quedó oculto de la lista.`
-      : `Aviso creado y puesto en procesamiento para ${payload.destinatarios} destinatario(s). El envío continúa en segundo plano.`;
+      ? `Aviso corregido y puesto en procesamiento para ${payload.destinatarios} destinatario(s). Revisa su avance en Gestión de Avisos.`
+      : `Aviso creado y puesto en procesamiento para ${payload.destinatarios} destinatario(s). Revisa su avance en Gestión de Avisos.`;
     showMessage(mensajeExito, 'success');
     formElement.reset();
     activarModoCreacion();
     updateVisibleFields();
     actualizarContadorCaracteres();
-    loadAvisos();
   } catch (error) {
     showMessage(error.message);
   } finally {

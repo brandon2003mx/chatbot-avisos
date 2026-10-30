@@ -50,18 +50,27 @@ function formatSegmento(aviso) {
 function renderAvisos(avisos) {
   const tbody = document.getElementById('managedNotices');
   if (!avisos.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Aún no hay avisos registrados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Aún no hay avisos registrados.</td></tr>';
     return;
   }
   tbody.innerHTML = avisos.map(aviso => {
     const enProceso = ESTADOS_EN_PROCESO.includes(aviso.estadoEnvio);
     const disabledAttr = enProceso ? 'disabled title="El aviso todavía está en proceso de envío."' : '';
+    const destinatarios = Number(aviso.destinatarios || 0);
+    const enviados = Number(aviso.enviados || 0);
+    const leidos = Number(aviso.leidos || 0);
+    // El porcentaje solo tiene sentido contra un total conocido: un
+    // aviso sin destinatarios no se reporta como 0% de lectura.
+    const porcentajeLeido = enviados > 0 ? ` (${Math.round((leidos / enviados) * 100)}%)` : '';
     return `<tr>
     <td>
       <strong>${escapeHtml(aviso.titulo)}</strong>
-      <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${Number(aviso.enviados || 0)}/${Number(aviso.destinatarios || 0)} enviados · ${formatFecha(aviso.fechaCreacion)}</div>
+      <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${formatFecha(aviso.fechaCreacion)}</div>
     </td>
     <td><span class="notice-badge">${escapeHtml(formatSegmento(aviso))}</span></td>
+    <td>${destinatarios}</td>
+    <td>${enviados}</td>
+    <td>${leidos}<span class="table-subtext">${porcentajeLeido}</span></td>
     <td>${Number(aviso.errores || 0)}</td>
     <td>
       <div class="notice-actions">
@@ -85,7 +94,7 @@ async function loadAvisos() {
       pollTimeoutId = setTimeout(loadAvisos, POLL_INTERVAL_MS);
     }
   } catch (error) {
-    document.getElementById('managedNotices').innerHTML = '<tr><td colspan="4" class="table-empty">No fue posible cargar los avisos.</td></tr>';
+    document.getElementById('managedNotices').innerHTML = '<tr><td colspan="7" class="table-empty">No fue posible cargar los avisos.</td></tr>';
     showMessage(error.message);
   }
 }
