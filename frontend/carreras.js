@@ -40,23 +40,12 @@ async function loadCarreras() {
 
 document.getElementById('refreshCarrerasButton').addEventListener('click', loadCarreras);
 
-// La estructura (semestres y grupos) solo se define al crear la carrera:
-// editarla implicaría borrar o agregar semestres existentes. Al ocultar
-// los campos también se deshabilitan, para que el navegador no intente
-// validar controles que el usuario no puede ver.
-function mostrarEstructura(visible) {
-  document.querySelectorAll('.estructura-field').forEach(campo => {
-    campo.hidden = !visible;
-  });
-  document.getElementById('numeroSemestres').disabled = !visible;
-  document.getElementById('numeroGrupos').disabled = !visible;
-}
-
 // Los grupos son letras consecutivas (3 = A, B, C); el texto de apoyo
-// muestra cuáles se van a crear conforme se cambia la cantidad.
+// muestra cuáles van a quedar conforme se cambia la cantidad.
 function actualizarVistaGrupos() {
   const cantidad = Number(document.getElementById('numeroGrupos').value);
   const preview = document.getElementById('gruposPreview');
+  const verbo = carreraEnEdicion ? 'quedarán' : 'se crearán';
 
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10) {
     preview.textContent = 'Indica entre 1 y 10 grupos.';
@@ -64,16 +53,56 @@ function actualizarVistaGrupos() {
   }
 
   const letras = Array.from({ length: cantidad }, (_, indice) => String.fromCharCode(65 + indice));
-  preview.textContent = cantidad === 1
-    ? 'Se creará el grupo A.'
-    : `Se crearán los grupos ${letras.slice(0, -1).join(', ')} y ${letras.at(-1)}.`;
+  const frase = cantidad === 1
+    ? `${verbo === 'quedarán' ? 'Quedará' : 'Se creará'} el grupo A.`
+    : `${verbo === 'quedarán' ? 'Quedarán' : 'Se crearán'} los grupos ${letras.slice(0, -1).join(', ')} y ${letras.at(-1)}.`;
+
+  preview.textContent = carreraEnEdicion
+    ? `${frase} Los que sobren dejarán de estar disponibles.`
+    : frase;
+}
+
+// Al editar, los campos arrancan con lo que la carrera tiene hoy, para
+// que guardar sin tocarlos no cambie nada. Si la lectura falla, la
+// bandera queda en false y el formulario no manda la estructura: con
+// los valores por defecto en pantalla, guardar la reescribiría sin que
+// el usuario lo haya pedido.
+let estructuraCargada = false;
+
+async function cargarEstructuraActual(carreraId) {
+  const semestresInput = document.getElementById('numeroSemestres');
+  const gruposInput = document.getElementById('numeroGrupos');
+
+  estructuraCargada = false;
+
+  try {
+    const { semestres } = await apiRequest(`/carreras/${encodeURIComponent(carreraId)}/semestres`);
+    semestresInput.value = semestres.length;
+
+    if (!semestres.length) {
+      actualizarVistaGrupos();
+      return;
+    }
+
+    const primero = semestres
+      .slice()
+      .sort((a, b) => Number(a.id) - Number(b.id))[0];
+    const { grupos } = await apiRequest(
+      `/carreras/${encodeURIComponent(carreraId)}/semestres/${encodeURIComponent(primero.id)}/grupos`
+    );
+    gruposInput.value = grupos.length;
+    estructuraCargada = true;
+  } catch (error) {
+    showMessage(`No fue posible leer la estructura actual: ${error.message}`);
+  } finally {
+    actualizarVistaGrupos();
+  }
 }
 
 document.getElementById('numeroGrupos').addEventListener('input', actualizarVistaGrupos);
 
 function cancelarEdicion() {
   carreraEnEdicion = null;
-  mostrarEstructura(true);
   document.getElementById('carreraForm').reset();
   actualizarVistaGrupos();
   document.getElementById('formTitle').textContent = 'Registrar carrera';
@@ -84,6 +113,26 @@ function cancelarEdicion() {
 
 document.getElementById('cancelEditButton').addEventListener('click', cancelarEdicion);
 
+// Lo que se quita no se borra, solo se desactiva; conviene decirlo
+// para que no parezca que se perdieron los datos.
+function resumenEstructura(estructura) {
+  if (!estructura) return '';
+
+  const partes = [];
+
+  if (estructura.semestresDesactivados) {
+    partes.push(`${estructura.semestresDesactivados} semestre(s)`);
+  }
+
+  if (estructura.gruposDesactivados) {
+    partes.push(`${estructura.gruposDesactivados} grupo(s)`);
+  }
+
+  return partes.length
+    ? ` Se desactivaron ${partes.join(' y ')}: dejan de aparecer en el bot, pero no se borraron.`
+    : '';
+}
+
 document.getElementById('carreraForm').addEventListener('submit', async event => {
   event.preventDefault();
   const submitButton = document.getElementById('submitCarreraButton');
@@ -93,7 +142,7 @@ document.getElementById('carreraForm').addEventListener('submit', async event =>
     clave: formData.get('clave').trim(),
   };
 
-  if (!carreraEnEdicion) {
+  if (!carreraEnEdicion || estructuraCargada) {
     carrera.numeroSemestres = Number(formData.get('numeroSemestres'));
     carrera.numeroGrupos = Number(formData.get('numeroGrupos'));
   }
@@ -101,11 +150,13 @@ document.getElementById('carreraForm').addEventListener('submit', async event =>
   submitButton.disabled = true;
 
   try {
-    await apiRequest(carreraEnEdicion ? `/carreras/${encodeURIComponent(carreraEnEdicion)}` : '/carreras', {
+    const respuesta = await apiRequest(carreraEnEdicion ? `/carreras/${encodeURIComponent(carreraEnEdicion)}` : '/carreras', {
       method: carreraEnEdicion ? 'PATCH' : 'POST',
       body: JSON.stringify(carrera),
     });
-    const mensaje = carreraEnEdicion ? 'Carrera actualizada correctamente.' : 'Carrera creada correctamente.';
+    const mensaje = carreraEnEdicion
+      ? `Carrera actualizada correctamente.${resumenEstructura(respuesta.estructura)}`
+      : 'Carrera creada correctamente.';
     cancelarEdicion();
     showMessage(mensaje, 'success');
     loadCarreras();
@@ -124,11 +175,11 @@ document.getElementById('carrerasTable').addEventListener('click', event => {
   if (editButton) {
     const row = editButton.closest('tr');
     carreraEnEdicion = editButton.dataset.editId;
-    mostrarEstructura(false);
     document.getElementById('nombre').value = row.cells[0].textContent.trim();
     document.getElementById('clave').value = row.cells[1].textContent.trim() === 'Sin clave' ? '' : row.cells[1].textContent.trim();
+    cargarEstructuraActual(carreraEnEdicion);
     document.getElementById('formTitle').textContent = 'Editar carrera';
-    document.getElementById('formDescription').textContent = 'Actualiza los datos de la carrera seleccionada.';
+    document.getElementById('formDescription').textContent = 'Actualiza los datos de la carrera seleccionada. Si reduces semestres o grupos, los estudiantes que ya estén ahí dejan de recibir avisos segmentados.';
     document.getElementById('submitCarreraButton').textContent = 'Guardar cambios';
     document.getElementById('cancelEditButton').hidden = false;
     document.getElementById('nombre').focus();

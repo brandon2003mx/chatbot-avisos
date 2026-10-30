@@ -204,6 +204,136 @@ async function crearCarrera(
 }
 
 /**
+ * Ajusta la estructura académica de una carrera que ya existe.
+ *
+ * Lo que sobra no se borra, se marca `activo: false`: los avisos ya
+ * enviados a ese semestre o grupo siguen teniendo a qué apuntar, y
+ * volver a crecer reactiva los mismos documentos en vez de duplicarlos.
+ * Un semestre o grupo inactivo deja de aparecer en el bot y de poder
+ * recibir avisos nuevos.
+ *
+ * Todo se escribe en un solo lote: la estructura nunca queda a medias.
+ *
+ * @param {string} carreraId ID de la carrera.
+ * @param {*} numeroSemestres Cantidad deseada; si no viene, se
+ *   conserva la que ya tiene.
+ * @param {*} numeroGrupos Cantidad deseada por semestre; si no viene,
+ *   se conserva la que ya tiene.
+ * @return {Promise<{numeroSemestres: number, grupos: Array<string>,
+ *   semestresDesactivados: number, gruposDesactivados: number}>}
+ */
+async function actualizarEstructura(
+    carreraId,
+    numeroSemestres,
+    numeroGrupos,
+) {
+  const carreraRef = db.collection("carreras").doc(carreraId);
+
+  // Se leen también los inactivos: si la carrera vuelve a crecer, hay
+  // que reactivar esos documentos en lugar de crear otros encima.
+  const semestresSnap = await carreraRef.collection("semestres").get();
+
+  const semestresActuales = semestresSnap.docs
+      .filter((doc) => doc.data().activo === true)
+      .length;
+
+  const gruposPorSemestre = await Promise.all(
+      semestresSnap.docs.map(async (doc) => ({
+        id: doc.id,
+        activo: doc.data().activo === true,
+        grupos: (await doc.ref.collection("grupos").get()).docs,
+      })),
+  );
+
+  const primerSemestreActivo = gruposPorSemestre.find(
+      (semestre) => semestre.activo,
+  );
+
+  const gruposActuales = primerSemestreActivo ?
+    primerSemestreActivo.grupos.filter(
+        (grupo) => grupo.data().activo === true,
+    ).length :
+    0;
+
+  const {numeroSemestres: semestres, grupos} = normalizarEstructura(
+      numeroSemestres === undefined || numeroSemestres === null ||
+        numeroSemestres === "" ?
+        semestresActuales || undefined :
+        numeroSemestres,
+      numeroGrupos === undefined || numeroGrupos === null ||
+        numeroGrupos === "" ?
+        gruposActuales || undefined :
+        numeroGrupos,
+  );
+
+  const lote = db.batch();
+  const ahora = new Date();
+  let semestresDesactivados = 0;
+  let gruposDesactivados = 0;
+
+  for (let numero = 1; numero <= semestres; numero++) {
+    const semestreRef = carreraRef
+        .collection("semestres")
+        .doc(String(numero));
+
+    const existente = gruposPorSemestre.find(
+        (semestre) => semestre.id === String(numero),
+    );
+
+    const datosSemestre = {
+      numero,
+      activo: true,
+      fechaActualizacion: ahora,
+    };
+
+    if (!existente) {
+      datosSemestre.fechaCreacion = ahora;
+    }
+
+    lote.set(semestreRef, datosSemestre, {merge: true});
+
+    for (const nombre of grupos) {
+      lote.set(
+          semestreRef.collection("grupos").doc(nombre),
+          {
+            nombre,
+            activo: true,
+            fechaActualizacion: ahora,
+          },
+          {merge: true},
+      );
+    }
+
+    for (const grupo of existente ? existente.grupos : []) {
+      if (!grupos.includes(grupo.id) && grupo.data().activo === true) {
+        lote.update(grupo.ref, {activo: false, fechaActualizacion: ahora});
+        gruposDesactivados++;
+      }
+    }
+  }
+
+  for (const semestre of gruposPorSemestre) {
+    if (Number(semestre.id) > semestres && semestre.activo) {
+      lote.update(
+          carreraRef.collection("semestres").doc(semestre.id),
+          {activo: false, fechaActualizacion: ahora},
+      );
+
+      semestresDesactivados++;
+    }
+  }
+
+  await lote.commit();
+
+  return {
+    numeroSemestres: semestres,
+    grupos,
+    semestresDesactivados,
+    gruposDesactivados,
+  };
+}
+
+/**
  * Crea un semestre dentro de una carrera.
  *
  * @param {string} carreraId ID de la carrera.
@@ -445,6 +575,7 @@ module.exports = {
   crearSemestre,
   crearGrupo,
   actualizarCarrera,
+  actualizarEstructura,
   actualizarSemestre,
   actualizarGrupo,
   validarCarreraActiva,

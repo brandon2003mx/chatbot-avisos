@@ -58,7 +58,7 @@ function renderSegmento(aviso) {
     .map(detalle => `<div class="table-subtext">${escapeHtml(detalle)}</div>`)
     .join('');
 
-  return `<span class="notice-badge carrera-badge">${escapeHtml(carrera)}</span>${lineas}`;
+  return `<div class="segmento-carrera">${escapeHtml(carrera)}</div>${lineas}`;
 }
 
 function renderAvisos(avisos) {

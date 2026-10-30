@@ -17,6 +17,7 @@ const {
   crearSemestre,
   crearGrupo,
   actualizarCarrera,
+  actualizarEstructura,
   actualizarSemestre,
   actualizarGrupo,
 } = require("./src/services/carreraService");
@@ -984,7 +985,18 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         nombre,
         clave,
         activo,
+        numeroSemestres,
+        numeroGrupos,
       } = req.body;
+
+      const cambiaEstructura =
+        numeroSemestres !== undefined || numeroGrupos !== undefined;
+
+      // Se valida antes de escribir nada, para que un dato inválido no
+      // alcance a modificar el nombre y luego falle en los semestres.
+      if (cambiaEstructura) {
+        normalizarEstructura(numeroSemestres, numeroGrupos);
+      }
 
       const datos = {};
 
@@ -1014,16 +1026,28 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         datos.activo = activo;
       }
 
-      if (Object.keys(datos).length === 0) {
+      if (Object.keys(datos).length === 0 && !cambiaEstructura) {
         throw new Error(
             "No se proporcionaron cambios.",
         );
       }
 
-      await actualizarCarrera(
-          carreraId,
-          datos,
-      );
+      if (Object.keys(datos).length > 0) {
+        await actualizarCarrera(
+            carreraId,
+            datos,
+        );
+      }
+
+      let estructura = null;
+
+      if (cambiaEstructura) {
+        estructura = await actualizarEstructura(
+            carreraId,
+            numeroSemestres,
+            numeroGrupos,
+        );
+      }
 
       return res.status(200).json({
         ok: true,
@@ -1031,6 +1055,12 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
           id: carreraId,
           ...carrera,
           ...datos,
+        },
+        estructura: estructura && {
+          numeroSemestres: estructura.numeroSemestres,
+          numeroGrupos: estructura.grupos.length,
+          semestresDesactivados: estructura.semestresDesactivados,
+          gruposDesactivados: estructura.gruposDesactivados,
         },
         actualizadoPor: autenticacion.uid,
       });
