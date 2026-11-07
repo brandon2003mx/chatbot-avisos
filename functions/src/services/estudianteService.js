@@ -77,6 +77,59 @@ async function guardarEstudiante(
 }
 
 /**
+ * Cambia el número de control de un estudiante.
+ *
+ * El número de control es el ID del documento y Firestore no
+ * permite renombrarlo: hay que crear el documento nuevo y borrar el
+ * anterior. Va en una transacción por dos razones: para que el
+ * estudiante no quede duplicado ni desaparecido si algo falla a la
+ * mitad, y para que nadie alcance a ocupar el número nuevo entre la
+ * comprobación y la escritura.
+ *
+ * El historial de avisos no se toca: los destinatarios se guardan
+ * por telegramId, así que los envíos y las lecturas confirmadas
+ * siguen apuntando al mismo estudiante.
+ *
+ * @param {string} numControlAnterior Número de control actual.
+ * @param {string} numControlNuevo Número de control nuevo.
+ * @param {Object} datos Datos del estudiante a conservar.
+ * @return {Promise<boolean>} false si el número nuevo ya estaba
+ *   ocupado por otro estudiante.
+ */
+async function cambiarNumeroControl(
+    numControlAnterior,
+    numControlNuevo,
+    datos,
+) {
+  const anteriorRef = db
+      .collection("estudiantes")
+      .doc(String(numControlAnterior));
+
+  const nuevoRef = db
+      .collection("estudiantes")
+      .doc(String(numControlNuevo));
+
+  return db.runTransaction(async (transaction) => {
+    const ocupado = await transaction.get(nuevoRef);
+
+    if (ocupado.exists) {
+      return false;
+    }
+
+    transaction.set(nuevoRef, {
+      ...datos,
+      numControl: String(numControlNuevo),
+      activo: true,
+      fechaActualizacion: new Date(),
+    });
+
+    transaction.delete(anteriorRef);
+
+    return true;
+  });
+}
+
+/**
  * Busca estudiantes activos según una segmentación.
  *
  * @param {string} tipoSegmentacion Tipo de segmentación.
@@ -128,5 +181,6 @@ module.exports = {
   obtenerEstudiantePorTelegramId,
   obtenerEstudiantePorNumControl,
   guardarEstudiante,
+  cambiarNumeroControl,
   buscarEstudiantesPorSegmentacion,
 };

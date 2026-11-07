@@ -9,6 +9,7 @@ const {
   obtenerEstudiantePorTelegramId,
   obtenerEstudiantePorNumControl,
   guardarEstudiante,
+  cambiarNumeroControl,
 } = require("../estudianteService");
 
 const {
@@ -76,22 +77,31 @@ function validarNombreCompleto(texto) {
 }
 
 /**
- * Número de control del ITTG: exactamente 8 dígitos (estándar
- * TecNM: 2 de año + 3 de carrera + 3 secuenciales).
+ * Número de control del ITTG: 8 dígitos (estándar TecNM: 2 de año
+ * + 3 de carrera + 3 secuenciales), precedidos por una «C» cuando
+ * el estudiante cambió de carrera.
+ *
+ * El formato no es lo que protege el registro: de eso se encarga el
+ * código que llega al correo institucional. Aquí solo se descartan
+ * capturas que claramente no son un número de control.
  *
  * @type {RegExp}
  */
-const NUM_CONTROL_REGEX = /^\d{8}$/;
+const NUM_CONTROL_REGEX = /^C?\d{8}$/i;
 
 /**
  * Valida un número de control escrito por el estudiante.
+ *
+ * La «C» se pasa a mayúscula porque el número de control es el ID
+ * del documento en Firestore: sin normalizarla, escribirla en
+ * minúscula abriría un segundo registro para el mismo estudiante.
  *
  * @param {string} texto Texto recibido de Telegram.
  * @return {string|null} Número de control normalizado, o null si
  *   no es válido.
  */
 function validarNumControl(texto) {
-  const limpio = (texto || "").trim();
+  const limpio = (texto || "").trim().toUpperCase();
 
   return NUM_CONTROL_REGEX.test(limpio) ? limpio : null;
 }
@@ -110,12 +120,17 @@ const MAX_ENVIOS_CODIGO = 3;
  * de control de un compañero, el código llega al buzón del dueño
  * real y el impostor no puede continuar.
  *
+ * La cuenta sigue al número de control completo: a quien cambia de
+ * carrera se le reasigna el buzón con la «C» incluida. Va en
+ * minúsculas porque el número se guarda con la «C» en mayúscula y
+ * las cuentas institucionales se escriben en minúsculas.
+ *
  * @param {string} numControl Número de control.
  * @return {string}
  */
 function correoInstitucionalDe(numControl) {
   return (
-    `${PREFIJO_CORREO_INSTITUCIONAL}${numControl}` +
+    `${PREFIJO_CORREO_INSTITUCIONAL}${numControl.toLowerCase()}` +
     `@${DOMINIO_INSTITUCIONAL}`
   );
 }
@@ -356,6 +371,20 @@ async function procesarCodigoVerificacion(
     return;
   }
 
+  await enviarMensaje(
+      telegramId,
+      "✅ Correo verificado.",
+  );
+
+  // El mismo código verifica dos flujos distintos: el alta de un
+  // estudiante nuevo y el cambio de número de control de uno que ya
+  // estaba registrado.
+  if (pendiente.cambio === true) {
+    await finalizarCambioNumControl(telegramId, pendiente);
+
+    return;
+  }
+
   // El código ya no se necesita: se guarda solo lo que hace falta
   // para terminar el registro.
   await guardarRegistroPendiente(
@@ -366,11 +395,6 @@ async function procesarCodigoVerificacion(
         numControl: pendiente.numControl,
         correoInstitucional: pendiente.correoInstitucional,
       },
-  );
-
-  await enviarMensaje(
-      telegramId,
-      "✅ Correo verificado.",
   );
 
   await mostrarCarreras(
@@ -407,7 +431,7 @@ async function continuarRegistroPendiente(
   if (pendiente.etapa === "numControl") {
     await enviarMensaje(
         telegramId,
-        "✍️ Escribe tu número de control (8 dígitos) " +
+        "✍️ Escribe tu número de control " +
         "para continuar tu registro.",
     );
 
@@ -516,6 +540,18 @@ async function mostrarInfo(telegramId) {
       `🎓 Carrera: ${nombreCarrera}\n` +
       `📚 Semestre: ${numeroSemestre}\n` +
       `👥 Grupo: ${estudiante.grupoId}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✏️ Modificar mis datos",
+                callback_data: "registro:modificar",
+              },
+            ],
+          ],
+        },
+      },
   );
 }
 
@@ -800,7 +836,7 @@ async function procesarTextoRegistro(
 
     await enviarMensaje(
         telegramId,
-        "🆔 Ahora escribe tu número de control (8 dígitos):",
+        "🆔 Ahora escribe tu número de control:",
     );
 
     return;
@@ -813,7 +849,7 @@ async function procesarTextoRegistro(
       await enviarMensaje(
           telegramId,
           "Ese número de control no es válido. " +
-          "Debe tener exactamente 8 dígitos.",
+          "Debe ser solo números, sin espacios ni letras.",
       );
 
       return;
@@ -848,6 +884,12 @@ async function procesarTextoRegistro(
     return;
   }
 
+  if (pendiente.etapa === "cambioNumControl") {
+    await procesarNuevoNumControl(telegramId, texto);
+
+    return;
+  }
+
   if (pendiente.etapa === "codigo") {
     await procesarCodigoVerificacion(
         telegramId,
@@ -861,6 +903,165 @@ async function procesarTextoRegistro(
   await enviarMensaje(
       telegramId,
       "Usa los botones para continuar tu registro.",
+  );
+}
+
+/**
+ * Procesa el número de control nuevo que escribió un estudiante
+ * que ya estaba registrado y quiere cambiarlo.
+ *
+ * Nada se modifica todavía: el cambio solo se aplica cuando llegue
+ * el código al correo institucional nuevo. Así, quien se equivoque
+ * de número no pierde su registro actual.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} texto Texto recibido de Telegram.
+ * @return {Promise<void>}
+ */
+async function procesarNuevoNumControl(telegramId, texto) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await eliminarRegistroPendiente(telegramId);
+
+    await enviarMensaje(
+        telegramId,
+        "No encontramos tu registro. " +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  const numControl = validarNumControl(texto);
+
+  if (!numControl) {
+    await enviarMensaje(
+        telegramId,
+        "Ese número de control no es válido. " +
+        "Debe ser solo números, sin espacios ni letras, " +
+        "o una «C» al inicio si cambiaste de carrera.",
+    );
+
+    return;
+  }
+
+  if (numControl === estudiante.numControl) {
+    await enviarMensaje(
+        telegramId,
+        "Ese ya es tu número de control actual. " +
+        "Escribe el nuevo, o pulsa «Cancelar» si te " +
+        "equivocaste.",
+    );
+
+    return;
+  }
+
+  const ocupado = await obtenerEstudiantePorNumControl(
+      numControl,
+  );
+
+  if (ocupado) {
+    await enviarMensaje(
+        telegramId,
+        "Ese número de control ya está registrado por otra " +
+        "persona. Si crees que es un error, contacta a tu " +
+        "coordinador.",
+    );
+
+    return;
+  }
+
+  await enviarCodigoVerificacion(
+      telegramId,
+      {
+        etapa: "codigo",
+        cambio: true,
+        numControlAnterior: estudiante.numControl,
+        numControl,
+        codigoEnvios: 0,
+      },
+  );
+}
+
+/**
+ * Aplica el cambio de número de control una vez verificado el
+ * correo institucional nuevo.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {Object} pendiente Registro pendiente ya verificado.
+ * @return {Promise<void>}
+ */
+async function finalizarCambioNumControl(telegramId, pendiente) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await eliminarRegistroPendiente(telegramId);
+
+    await enviarMensaje(
+        telegramId,
+        "No encontramos tu registro. " +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  const cambiado = await cambiarNumeroControl(
+      estudiante.numControl,
+      pendiente.numControl,
+      {
+        nombre: estudiante.nombre,
+        telegramId: estudiante.telegramId,
+        correoInstitucional: pendiente.correoInstitucional,
+        correoVerificado: true,
+        carreraId: estudiante.carreraId,
+        semestreId: estudiante.semestreId,
+        grupoId: estudiante.grupoId,
+        fechaRegistro: estudiante.fechaRegistro,
+      },
+  );
+
+  await eliminarRegistroPendiente(telegramId);
+
+  if (!cambiado) {
+    await enviarMensaje(
+        telegramId,
+        "Alguien registró ese número de control mientras " +
+        "verificabas tu correo. Tus datos quedaron sin cambios; " +
+        "contacta a tu coordinador.",
+    );
+
+    return;
+  }
+
+  // Cambiar de número de control casi siempre significa que el
+  // estudiante cambió de carrera, así que conviene ofrecerle
+  // actualizarla en vez de que lo descubra cuando deje de recibir
+  // los avisos que le tocan.
+  await enviarMensaje(
+      telegramId,
+      "✅ Número de control actualizado.\n\n" +
+      `🆔 Nuevo número: ${pendiente.numControl}\n` +
+      `📧 Correo: ${pendiente.correoInstitucional}\n\n` +
+      "Si también cambiaste de carrera, actualiza tus datos " +
+      "académicos para seguir recibiendo los avisos correctos.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎓 Actualizar carrera, semestre y grupo",
+                callback_data: "editar:academico",
+              },
+            ],
+          ],
+        },
+      },
   );
 }
 
@@ -1075,12 +1276,125 @@ async function iniciarModificacion(telegramId) {
 }
 
 /**
+ * Muestra qué puede modificar un estudiante ya registrado.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @return {Promise<void>}
+ */
+async function mostrarMenuModificacion(telegramId) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await enviarMensaje(
+        telegramId,
+        "Aún no estás registrado.\n\n" +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  await enviarMensaje(
+      telegramId,
+      "✏️ Modificar información\n\n" +
+      `🆔 Número de control: ${estudiante.numControl}\n\n` +
+      "¿Qué quieres cambiar?",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎓 Carrera, semestre y grupo",
+                callback_data: "editar:academico",
+              },
+            ],
+            [
+              {
+                text: "🆔 Número de control",
+                callback_data: "editar:numcontrol",
+              },
+            ],
+            [
+              {
+                text: "↩️ Cancelar",
+                callback_data: "editar:cancelar",
+              },
+            ],
+          ],
+        },
+      },
+  );
+}
+
+/**
+ * Inicia el cambio de número de control.
+ *
+ * Solo pide el número nuevo y deja el cambio en espera: nada se
+ * modifica hasta que llegue el código al correo institucional que
+ * le corresponde a ese número. De esa forma nadie puede apropiarse
+ * del número de control de otro estudiante.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @return {Promise<void>}
+ */
+async function iniciarCambioNumControl(telegramId) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await enviarMensaje(
+        telegramId,
+        "Aún no estás registrado.\n\n" +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  await guardarRegistroPendiente(
+      telegramId,
+      {etapa: "cambioNumControl"},
+  );
+
+  await enviarMensaje(
+      telegramId,
+      "🆔 Cambiar número de control\n\n" +
+      `Actual: ${estudiante.numControl}\n\n` +
+      "Escribe tu número de control nuevo. Te enviaremos un " +
+      "código al correo institucional que le corresponde, y el " +
+      "cambio se aplicará hasta que lo confirmes.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "↩️ Cancelar",
+                callback_data: "editar:cancelar",
+              },
+            ],
+          ],
+        },
+      },
+  );
+}
+
+/**
  * Cancela una modificación.
+ *
+ * Borra también el cambio a medias que pudiera haber quedado
+ * esperando un número de control o un código: si no se limpia, el
+ * bot seguiría interpretando como parte del cambio cualquier cosa
+ * que el estudiante escriba después.
  *
  * @param {string} telegramId ID de Telegram.
  * @return {Promise<void>}
  */
 async function cancelarModificacion(telegramId) {
+  await eliminarRegistroPendiente(telegramId);
+
   await enviarMensaje(
       telegramId,
       "↩️ Modificación cancelada.\n\n" +
@@ -1159,7 +1473,17 @@ async function procesarCallbackQuery(
   }
 
   if (datos === "registro:modificar") {
+    await mostrarMenuModificacion(telegramId);
+    return;
+  }
+
+  if (datos === "editar:academico") {
     await iniciarModificacion(telegramId);
+    return;
+  }
+
+  if (datos === "editar:numcontrol") {
+    await iniciarCambioNumControl(telegramId);
     return;
   }
 
@@ -1385,7 +1709,7 @@ async function procesarInfo(telegramId) {
  * @return {Promise<void>}
  */
 async function procesarRegistro(telegramId) {
-  await iniciarModificacion(telegramId);
+  await mostrarMenuModificacion(telegramId);
 }
 
 /**

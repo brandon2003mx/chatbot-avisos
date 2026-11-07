@@ -1,0 +1,488 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_registro_v"
+                  targetNamespace="http://tuxtla.tecnm.mx/chatbot-avisos">
+
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_Proceso" name="Proceso de alta de estudiantes en el bot de Telegram" processRef="Process_registro" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_registro" isExecutable="false">
+
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_Estudiante" name="Estudiante">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_2</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_3</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_4</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>CatchEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_5</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_6</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_8</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_alta</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Bot" name="Bot de Telegram / Cloud Functions">
+        <bpmn:flowNodeRef>ST_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_2</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_3</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_formato</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_4</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_5</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_codigo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_intentos</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_6</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_cancelado</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_8</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_9</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_10</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_11</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+
+    <bpmn:startEvent id="StartEvent_1" name="Inicio">
+      <bpmn:outgoing>F_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:userTask id="UT_1" name="Envía el comando /start">
+      <bpmn:incoming>F_1</bpmn:incoming>
+      <bpmn:outgoing>F_2</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_1" name="Muestra la bienvenida con el botón «Registrarme»">
+      <bpmn:incoming>F_2</bpmn:incoming>
+      <bpmn:outgoing>F_3</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_2" name="Pulsa «Registrarme»">
+      <bpmn:incoming>F_3</bpmn:incoming>
+      <bpmn:outgoing>F_4</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_2" name="Solicita el nombre completo">
+      <bpmn:incoming>F_4</bpmn:incoming>
+      <bpmn:outgoing>F_5</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_3" name="Escribe su nombre completo">
+      <bpmn:incoming>F_5</bpmn:incoming>
+      <bpmn:outgoing>F_6</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_3" name="Solicita el número de control">
+      <bpmn:incoming>F_6</bpmn:incoming>
+      <bpmn:outgoing>F_7</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_4" name="Escribe su número de control">
+      <bpmn:incoming>F_7</bpmn:incoming>
+      <bpmn:incoming>F_10</bpmn:incoming>
+      <bpmn:outgoing>F_8</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_formato" name="¿Tiene 8 dígitos?">
+      <bpmn:incoming>F_8</bpmn:incoming>
+      <bpmn:outgoing>F_9</bpmn:outgoing>
+      <bpmn:outgoing>F_11</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="ST_4" name="Informa el error y permite reintentar">
+      <bpmn:incoming>F_9</bpmn:incoming>
+      <bpmn:outgoing>F_10</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sendTask id="ST_5" name="Deduce el correo institucional y envía un código de 6 dígitos">
+      <bpmn:incoming>F_11</bpmn:incoming>
+      <bpmn:outgoing>F_12</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:intermediateCatchEvent id="CatchEvent_1" name="Recibe el correo con el código">
+      <bpmn:incoming>F_12</bpmn:incoming>
+      <bpmn:outgoing>F_13</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_1" />
+    </bpmn:intermediateCatchEvent>
+
+    <bpmn:userTask id="UT_5" name="Escribe el código de 6 dígitos">
+      <bpmn:incoming>F_13</bpmn:incoming>
+      <bpmn:incoming>F_17</bpmn:incoming>
+      <bpmn:outgoing>F_14</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_codigo" name="¿Código válido y vigente?">
+      <bpmn:incoming>F_14</bpmn:incoming>
+      <bpmn:outgoing>F_15</bpmn:outgoing>
+      <bpmn:outgoing>F_19</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:exclusiveGateway id="GW_intentos" name="¿Quedan intentos?">
+      <bpmn:incoming>F_15</bpmn:incoming>
+      <bpmn:outgoing>F_16</bpmn:outgoing>
+      <bpmn:outgoing>F_18</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="ST_6" name="Informa el error y permite reintentar">
+      <bpmn:incoming>F_16</bpmn:incoming>
+      <bpmn:outgoing>F_17</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_cancelado" name="Registro cancelado">
+      <bpmn:incoming>F_18</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:serviceTask id="ST_7" name="Muestra las carreras disponibles">
+      <bpmn:incoming>F_19</bpmn:incoming>
+      <bpmn:outgoing>F_20</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_6" name="Elige su carrera">
+      <bpmn:incoming>F_20</bpmn:incoming>
+      <bpmn:outgoing>F_21</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_8" name="Muestra los semestres de la carrera">
+      <bpmn:incoming>F_21</bpmn:incoming>
+      <bpmn:outgoing>F_22</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_7" name="Elige su semestre">
+      <bpmn:incoming>F_22</bpmn:incoming>
+      <bpmn:outgoing>F_23</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_9" name="Muestra los grupos del semestre">
+      <bpmn:incoming>F_23</bpmn:incoming>
+      <bpmn:outgoing>F_24</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="UT_8" name="Elige su grupo">
+      <bpmn:incoming>F_24</bpmn:incoming>
+      <bpmn:outgoing>F_25</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="ST_10" name="Guarda al estudiante con su telegramId y segmentación">
+      <bpmn:incoming>F_25</bpmn:incoming>
+      <bpmn:outgoing>F_26</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="ST_11" name="Confirma el registro al estudiante">
+      <bpmn:incoming>F_26</bpmn:incoming>
+      <bpmn:outgoing>F_27</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_alta" name="Alta completada">
+      <bpmn:incoming>F_27</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:textAnnotation id="TextAnnotation_1">
+      <bpmn:text>El correo se deduce del número de control (l…@tuxtla.tecnm.mx). El código vence en 10 minutos y admite hasta 3 reenvíos.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_1" sourceRef="ST_5" targetRef="TextAnnotation_1" />
+
+    <bpmn:textAnnotation id="TextAnnotation_2">
+      <bpmn:text>Máximo 5 intentos fallidos; al agotarse, el registro se cancela.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_2" sourceRef="GW_intentos" targetRef="TextAnnotation_2" />
+
+    <bpmn:textAnnotation id="TextAnnotation_3">
+      <bpmn:text>Se almacena en Firestore (colección estudiantes): número de control, nombre, correo, telegramId, carrera, semestre y grupo.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_3" sourceRef="ST_10" targetRef="TextAnnotation_3" />
+
+    <bpmn:sequenceFlow id="F_1" sourceRef="StartEvent_1" targetRef="UT_1" />
+    <bpmn:sequenceFlow id="F_2" sourceRef="UT_1" targetRef="ST_1" />
+    <bpmn:sequenceFlow id="F_3" sourceRef="ST_1" targetRef="UT_2" />
+    <bpmn:sequenceFlow id="F_4" sourceRef="UT_2" targetRef="ST_2" />
+    <bpmn:sequenceFlow id="F_5" sourceRef="ST_2" targetRef="UT_3" />
+    <bpmn:sequenceFlow id="F_6" sourceRef="UT_3" targetRef="ST_3" />
+    <bpmn:sequenceFlow id="F_7" sourceRef="ST_3" targetRef="UT_4" />
+    <bpmn:sequenceFlow id="F_8" sourceRef="UT_4" targetRef="GW_formato" />
+    <bpmn:sequenceFlow id="F_9" name="No" sourceRef="GW_formato" targetRef="ST_4" />
+    <bpmn:sequenceFlow id="F_10" sourceRef="ST_4" targetRef="UT_4" />
+    <bpmn:sequenceFlow id="F_11" name="Sí" sourceRef="GW_formato" targetRef="ST_5" />
+    <bpmn:sequenceFlow id="F_12" sourceRef="ST_5" targetRef="CatchEvent_1" />
+    <bpmn:sequenceFlow id="F_13" sourceRef="CatchEvent_1" targetRef="UT_5" />
+    <bpmn:sequenceFlow id="F_14" sourceRef="UT_5" targetRef="GW_codigo" />
+    <bpmn:sequenceFlow id="F_15" name="No" sourceRef="GW_codigo" targetRef="GW_intentos" />
+    <bpmn:sequenceFlow id="F_16" name="Sí" sourceRef="GW_intentos" targetRef="ST_6" />
+    <bpmn:sequenceFlow id="F_17" sourceRef="ST_6" targetRef="UT_5" />
+    <bpmn:sequenceFlow id="F_18" name="No" sourceRef="GW_intentos" targetRef="EndEvent_cancelado" />
+    <bpmn:sequenceFlow id="F_19" name="Sí" sourceRef="GW_codigo" targetRef="ST_7" />
+    <bpmn:sequenceFlow id="F_20" sourceRef="ST_7" targetRef="UT_6" />
+    <bpmn:sequenceFlow id="F_21" sourceRef="UT_6" targetRef="ST_8" />
+    <bpmn:sequenceFlow id="F_22" sourceRef="ST_8" targetRef="UT_7" />
+    <bpmn:sequenceFlow id="F_23" sourceRef="UT_7" targetRef="ST_9" />
+    <bpmn:sequenceFlow id="F_24" sourceRef="ST_9" targetRef="UT_8" />
+    <bpmn:sequenceFlow id="F_25" sourceRef="UT_8" targetRef="ST_10" />
+    <bpmn:sequenceFlow id="F_26" sourceRef="ST_10" targetRef="ST_11" />
+    <bpmn:sequenceFlow id="F_27" sourceRef="ST_11" targetRef="EndEvent_alta" />
+
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+
+      <bpmndi:BPMNShape id="Participant_Proceso_di" bpmnElement="Participant_Proceso" isHorizontal="false">
+        <dc:Bounds x="160" y="80" width="960" height="2220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Estudiante_di" bpmnElement="Lane_Estudiante" isHorizontal="false">
+        <dc:Bounds x="160" y="110" width="340" height="2190" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Bot_di" bpmnElement="Lane_Bot" isHorizontal="false">
+        <dc:Bounds x="500" y="110" width="620" height="2190" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="312" y="140" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="110" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_1_di" bpmnElement="UT_1">
+        <dc:Bounds x="255" y="210" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_1_di" bpmnElement="ST_1">
+        <dc:Bounds x="545" y="310" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_2_di" bpmnElement="UT_2">
+        <dc:Bounds x="255" y="410" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_2_di" bpmnElement="ST_2">
+        <dc:Bounds x="545" y="510" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_3_di" bpmnElement="UT_3">
+        <dc:Bounds x="255" y="610" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_3_di" bpmnElement="ST_3">
+        <dc:Bounds x="545" y="710" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_4_di" bpmnElement="UT_4">
+        <dc:Bounds x="255" y="810" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_formato_di" bpmnElement="GW_formato" isMarkerVisible="true">
+        <dc:Bounds x="595" y="920" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="570" y="880" width="100" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_4_di" bpmnElement="ST_4">
+        <dc:Bounds x="820" y="910" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_5_di" bpmnElement="ST_5">
+        <dc:Bounds x="545" y="1020" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CatchEvent_1_di" bpmnElement="CatchEvent_1">
+        <dc:Bounds x="312" y="1130" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="200" y="1136" width="100" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_5_di" bpmnElement="UT_5">
+        <dc:Bounds x="255" y="1210" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_codigo_di" bpmnElement="GW_codigo" isMarkerVisible="true">
+        <dc:Bounds x="595" y="1320" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="560" y="1272" width="120" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_intentos_di" bpmnElement="GW_intentos" isMarkerVisible="true">
+        <dc:Bounds x="870" y="1320" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="845" y="1280" width="100" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_6_di" bpmnElement="ST_6">
+        <dc:Bounds x="820" y="1420" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_cancelado_di" bpmnElement="EndEvent_cancelado">
+        <dc:Bounds x="990" y="1327" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1032" y="1333" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_7_di" bpmnElement="ST_7">
+        <dc:Bounds x="545" y="1420" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_6_di" bpmnElement="UT_6">
+        <dc:Bounds x="255" y="1520" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_8_di" bpmnElement="ST_8">
+        <dc:Bounds x="545" y="1620" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_7_di" bpmnElement="UT_7">
+        <dc:Bounds x="255" y="1720" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_9_di" bpmnElement="ST_9">
+        <dc:Bounds x="545" y="1820" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_8_di" bpmnElement="UT_8">
+        <dc:Bounds x="255" y="1920" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_10_di" bpmnElement="ST_10">
+        <dc:Bounds x="545" y="2020" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_11_di" bpmnElement="ST_11">
+        <dc:Bounds x="545" y="2120" width="150" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_alta_di" bpmnElement="EndEvent_alta">
+        <dc:Bounds x="312" y="2230" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="290" y="2270" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="TextAnnotation_1_di" bpmnElement="TextAnnotation_1">
+        <dc:Bounds x="820" y="1020" width="200" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_2_di" bpmnElement="TextAnnotation_2">
+        <dc:Bounds x="900" y="1560" width="200" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_3_di" bpmnElement="TextAnnotation_3">
+        <dc:Bounds x="760" y="2010" width="230" height="90" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="F_1_di" bpmnElement="F_1">
+        <di:waypoint x="330" y="176" />
+        <di:waypoint x="330" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_2_di" bpmnElement="F_2">
+        <di:waypoint x="330" y="280" />
+        <di:waypoint x="330" y="345" />
+        <di:waypoint x="545" y="345" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_3_di" bpmnElement="F_3">
+        <di:waypoint x="620" y="380" />
+        <di:waypoint x="620" y="445" />
+        <di:waypoint x="405" y="445" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_4_di" bpmnElement="F_4">
+        <di:waypoint x="330" y="480" />
+        <di:waypoint x="330" y="545" />
+        <di:waypoint x="545" y="545" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_5_di" bpmnElement="F_5">
+        <di:waypoint x="620" y="580" />
+        <di:waypoint x="620" y="645" />
+        <di:waypoint x="405" y="645" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_6_di" bpmnElement="F_6">
+        <di:waypoint x="330" y="680" />
+        <di:waypoint x="330" y="745" />
+        <di:waypoint x="545" y="745" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_7_di" bpmnElement="F_7">
+        <di:waypoint x="620" y="780" />
+        <di:waypoint x="620" y="845" />
+        <di:waypoint x="405" y="845" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_8_di" bpmnElement="F_8">
+        <di:waypoint x="330" y="880" />
+        <di:waypoint x="330" y="945" />
+        <di:waypoint x="595" y="945" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_9_di" bpmnElement="F_9">
+        <di:waypoint x="645" y="945" />
+        <di:waypoint x="820" y="945" />
+        <bpmndi:BPMNLabel><dc:Bounds x="722" y="923" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_10_di" bpmnElement="F_10">
+        <di:waypoint x="895" y="910" />
+        <di:waypoint x="895" y="800" />
+        <di:waypoint x="330" y="800" />
+        <di:waypoint x="330" y="810" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_11_di" bpmnElement="F_11">
+        <di:waypoint x="620" y="970" />
+        <di:waypoint x="620" y="1020" />
+        <bpmndi:BPMNLabel><dc:Bounds x="628" y="985" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_12_di" bpmnElement="F_12">
+        <di:waypoint x="620" y="1090" />
+        <di:waypoint x="620" y="1112" />
+        <di:waypoint x="330" y="1112" />
+        <di:waypoint x="330" y="1130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_13_di" bpmnElement="F_13">
+        <di:waypoint x="330" y="1166" />
+        <di:waypoint x="330" y="1210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_14_di" bpmnElement="F_14">
+        <di:waypoint x="330" y="1280" />
+        <di:waypoint x="330" y="1345" />
+        <di:waypoint x="595" y="1345" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_15_di" bpmnElement="F_15">
+        <di:waypoint x="645" y="1345" />
+        <di:waypoint x="870" y="1345" />
+        <bpmndi:BPMNLabel><dc:Bounds x="747" y="1323" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_16_di" bpmnElement="F_16">
+        <di:waypoint x="895" y="1370" />
+        <di:waypoint x="895" y="1420" />
+        <bpmndi:BPMNLabel><dc:Bounds x="903" y="1385" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_17_di" bpmnElement="F_17">
+        <di:waypoint x="820" y="1455" />
+        <di:waypoint x="760" y="1455" />
+        <di:waypoint x="760" y="1245" />
+        <di:waypoint x="405" y="1245" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_18_di" bpmnElement="F_18">
+        <di:waypoint x="920" y="1345" />
+        <di:waypoint x="990" y="1345" />
+        <bpmndi:BPMNLabel><dc:Bounds x="944" y="1323" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_19_di" bpmnElement="F_19">
+        <di:waypoint x="620" y="1370" />
+        <di:waypoint x="620" y="1420" />
+        <bpmndi:BPMNLabel><dc:Bounds x="628" y="1385" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_20_di" bpmnElement="F_20">
+        <di:waypoint x="620" y="1490" />
+        <di:waypoint x="620" y="1555" />
+        <di:waypoint x="405" y="1555" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_21_di" bpmnElement="F_21">
+        <di:waypoint x="330" y="1590" />
+        <di:waypoint x="330" y="1655" />
+        <di:waypoint x="545" y="1655" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_22_di" bpmnElement="F_22">
+        <di:waypoint x="620" y="1690" />
+        <di:waypoint x="620" y="1755" />
+        <di:waypoint x="405" y="1755" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_23_di" bpmnElement="F_23">
+        <di:waypoint x="330" y="1790" />
+        <di:waypoint x="330" y="1855" />
+        <di:waypoint x="545" y="1855" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_24_di" bpmnElement="F_24">
+        <di:waypoint x="620" y="1890" />
+        <di:waypoint x="620" y="1955" />
+        <di:waypoint x="405" y="1955" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_25_di" bpmnElement="F_25">
+        <di:waypoint x="330" y="1990" />
+        <di:waypoint x="330" y="2055" />
+        <di:waypoint x="545" y="2055" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_26_di" bpmnElement="F_26">
+        <di:waypoint x="620" y="2090" />
+        <di:waypoint x="620" y="2120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_27_di" bpmnElement="F_27">
+        <di:waypoint x="545" y="2155" />
+        <di:waypoint x="470" y="2155" />
+        <di:waypoint x="470" y="2248" />
+        <di:waypoint x="348" y="2248" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Association_1_di" bpmnElement="Association_1">
+        <di:waypoint x="695" y="1055" />
+        <di:waypoint x="820" y="1060" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_2_di" bpmnElement="Association_2">
+        <di:waypoint x="920" y="1360" />
+        <di:waypoint x="1000" y="1560" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_3_di" bpmnElement="Association_3">
+        <di:waypoint x="695" y="2055" />
+        <di:waypoint x="760" y="2055" />
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
