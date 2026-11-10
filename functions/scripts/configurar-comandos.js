@@ -18,6 +18,7 @@ const COMANDOS = [
     command: "pendientes_lectura",
     description: "Avisos sin confirmar lectura",
   },
+  {command: "eventos", description: "Próximos eventos"},
 ];
 
 /**

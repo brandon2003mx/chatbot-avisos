@@ -23,9 +23,18 @@ const {
   enviarMensaje,
   responderCallback,
   editarTeclado,
+  editarMensaje,
 } = require("../telegramService");
 
 const {
+  ZONA_HORARIA,
+  formatearDia,
+  formatearHora,
+} = require("../../utils/fechas");
+
+const {
+  obtenerEventosDeEstudiante,
+  obtenerEventoDeEstudiante,
   construirMensajeAviso,
   tecladoConfirmarLectura,
   tecladoLecturaConfirmada,
@@ -1447,7 +1456,7 @@ const AVISO_ID_REGEX = /^[A-Za-z0-9]+$/;
  * @type {Intl.DateTimeFormat}
  */
 const FORMATO_FECHA_CORTA = new Intl.DateTimeFormat("es-MX", {
-  timeZone: "America/Mexico_City",
+  timeZone: ZONA_HORARIA,
   day: "numeric",
   month: "short",
 });
@@ -1719,6 +1728,227 @@ async function reenviarAviso(telegramId, avisoId) {
 }
 
 /**
+ * Rangos que ofrece /eventos, en el orden en que aparecen sus
+ * botones. La clave viaja en el callback_data (`eventos:{clave}`).
+ *
+ * Es un Map y no un objeto literal para que una clave alterada en el
+ * callback_data (por ejemplo "constructor") no encuentre nada.
+ *
+ * @type {Map<string, {dias: number, boton: string, titulo: string,
+ *   vacio: string}>}
+ */
+const RANGOS_EVENTOS = new Map([
+  ["hoy", {
+    dias: 1,
+    boton: "Hoy",
+    titulo: "📅 Eventos de hoy",
+    vacio: "No hay eventos pendientes para hoy. Usa los botones " +
+      "para ver los próximos días.",
+  }],
+  ["semana", {
+    dias: 7,
+    boton: "7 días",
+    titulo: "📅 Eventos de los próximos 7 días",
+    vacio: "No hay eventos en los próximos 7 días.",
+  }],
+  ["mes", {
+    dias: 30,
+    boton: "30 días",
+    titulo: "📅 Eventos de los próximos 30 días",
+    vacio: "No hay eventos en los próximos 30 días.",
+  }],
+]);
+
+/**
+ * Cuántos eventos se listan como máximo, por la misma razón que en
+ * /pendientes_lectura: un botón por evento.
+ *
+ * @type {number}
+ */
+const MAX_EVENTOS_LISTADOS = 10;
+
+/**
+ * Arma el texto y los botones de la lista de eventos de un rango:
+ * un botón por evento para verlo completo y, al final, la fila para
+ * cambiar de rango con el actual marcado.
+ *
+ * En los rangos de varios días los eventos se agrupan por día; en
+ * "hoy" no hace falta.
+ *
+ * @param {Object} estudiante Estudiante registrado.
+ * @param {string} clave Clave del rango (ver RANGOS_EVENTOS).
+ * @return {Promise<{texto: string, replyMarkup: Object}>}
+ */
+async function construirListaEventos(estudiante, clave) {
+  const rango = RANGOS_EVENTOS.get(clave);
+
+  const eventos = await obtenerEventosDeEstudiante(
+      estudiante,
+      new Date(),
+      rango.dias,
+  );
+
+  const listados = eventos.slice(0, MAX_EVENTOS_LISTADOS);
+  const restantes = eventos.length - listados.length;
+
+  let texto = `${rango.titulo}\n\n`;
+
+  if (eventos.length === 0) {
+    texto += rango.vacio;
+  } else {
+    const lineas = [];
+    let diaAnterior = null;
+
+    listados.forEach((evento, indice) => {
+      const dia = formatearDia(evento.fechaEvento);
+
+      if (clave !== "hoy" && dia !== diaAnterior) {
+        lineas.push(`${lineas.length > 0 ? "\n" : ""}🗓️ ${dia}`);
+        diaAnterior = dia;
+      }
+
+      const cuando = evento.eventoTodoElDia === true ?
+        "Todo el día" :
+        `${formatearHora(evento.fechaEvento)} h`;
+
+      lineas.push(`${indice + 1}. ${cuando} — ${evento.titulo}`);
+    });
+
+    texto += lineas.join("\n");
+
+    if (restantes > 0) {
+      texto += `\n\n…y ${restantes} evento(s) más adelante.`;
+    }
+
+    texto += "\n\nPulsa un evento para ver el aviso completo.";
+  }
+
+  const botones = listados.map((evento, indice) => [{
+    text: `📖 ${indice + 1}. ${recortarTexto(
+        evento.titulo,
+        MAX_TITULO_BOTON,
+    )}`,
+    callback_data: `evento:${evento.id}`,
+  }]);
+
+  botones.push(Array.from(RANGOS_EVENTOS, ([claveRango, datos]) => ({
+    text: claveRango === clave ? `✓ ${datos.boton}` : datos.boton,
+    callback_data: `eventos:${claveRango}`,
+  })));
+
+  return {
+    texto,
+    replyMarkup: {inline_keyboard: botones},
+  };
+}
+
+/**
+ * Muestra los eventos de un rango. Con `mensaje` (cuando se pulsó un
+ * botón de rango) edita esa misma lista en vez de mandar otra, para
+ * no llenar el chat de listas.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} clave Clave del rango (ver RANGOS_EVENTOS).
+ * @param {Object} [mensaje] Mensaje con la lista a reemplazar.
+ * @return {Promise<void>}
+ */
+async function mostrarEventos(telegramId, clave, mensaje) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await enviarMensaje(
+        telegramId,
+        "Aún no estás registrado.\n\n" +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  const {texto, replyMarkup} = await construirListaEventos(
+      estudiante,
+      clave,
+  );
+
+  if (mensaje && mensaje.chat && mensaje.message_id) {
+    try {
+      await editarMensaje(
+          mensaje.chat.id,
+          mensaje.message_id,
+          texto,
+          {reply_markup: replyMarkup},
+      );
+
+      return;
+    } catch (error) {
+      const descripcion = String(error.description || error.message);
+
+      // Pulsar el rango que ya está a la vista deja el mensaje igual,
+      // y Telegram responde con este error: no hay nada que hacer.
+      if (/message is not modified/i.test(descripcion)) {
+        return;
+      }
+
+      console.error(
+          "No se pudo editar la lista de eventos; se envía una nueva:",
+          descripcion,
+      );
+    }
+  }
+
+  await enviarMensaje(
+      telegramId,
+      texto,
+      {reply_markup: replyMarkup},
+  );
+}
+
+/**
+ * Envía completo el aviso de un evento. Si al estudiante le llegó,
+ * lleva el botón de lectura en su estado actual (activo o ya
+ * deshabilitado); si se registró después del envío, va sin botón,
+ * porque no hay lectura que confirmar.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<void>}
+ */
+async function mostrarEvento(telegramId, avisoId) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  const evento = estudiante && AVISO_ID_REGEX.test(avisoId) ?
+    await obtenerEventoDeEstudiante(avisoId, estudiante) :
+    null;
+
+  if (!evento) {
+    await enviarMensaje(
+        telegramId,
+        "Este evento ya no está disponible.",
+    );
+
+    return;
+  }
+
+  const opciones = {};
+
+  if (evento.destinatario) {
+    opciones.reply_markup = evento.destinatario.leido ?
+      tecladoLecturaConfirmada() :
+      tecladoConfirmarLectura(evento.id);
+  }
+
+  await enviarMensaje(
+      telegramId,
+      construirMensajeAviso(evento),
+      opciones,
+  );
+}
+
+/**
  * Procesa una pulsación de botón.
  *
  * @param {Object} callbackQuery Callback de Telegram.
@@ -1747,6 +1977,20 @@ async function procesarCallbackQuery(
 
   if (partes[0] === "ver" && partes.length === 2) {
     await reenviarAviso(telegramId, partes[1]);
+    return;
+  }
+
+  if (
+    partes[0] === "eventos" &&
+    partes.length === 2 &&
+    RANGOS_EVENTOS.has(partes[1])
+  ) {
+    await mostrarEventos(telegramId, partes[1], callbackQuery.message);
+    return;
+  }
+
+  if (partes[0] === "evento" && partes.length === 2) {
+    await mostrarEvento(telegramId, partes[1]);
     return;
   }
 
@@ -2077,6 +2321,11 @@ async function procesarActualizacion(update) {
     return;
   }
 
+  if (texto === "/eventos") {
+    await mostrarEventos(telegramId, "hoy");
+    return;
+  }
+
   const pendiente = await obtenerRegistroPendiente(
       telegramId,
   );
@@ -2093,8 +2342,8 @@ async function procesarActualizacion(update) {
 
   await enviarMensaje(
       telegramId,
-      "Utiliza /info, /registro o /pendientes_lectura " +
-      "desde el menú.",
+      "Utiliza /info, /registro, /pendientes_lectura o " +
+      "/eventos desde el menú.",
   );
 }
 

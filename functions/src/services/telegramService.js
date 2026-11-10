@@ -79,6 +79,27 @@ async function editarTeclado(chatId, messageId, replyMarkup) {
 }
 
 /**
+ * Reemplaza el texto (y opcionalmente los botones) de un mensaje ya
+ * enviado.
+ *
+ * @param {string|number} chatId Identificador del chat.
+ * @param {number} messageId ID del mensaje a editar.
+ * @param {string} texto Texto nuevo.
+ * @param {Object} opciones Opciones adicionales (reply_markup, ...).
+ * @return {Promise<Object|boolean>}
+ */
+async function editarMensaje(chatId, messageId, texto, opciones = {}) {
+  const telegramApi = obtenerTelegramApi();
+
+  return telegramApi.editMessageText({
+    chat_id: chatId,
+    message_id: messageId,
+    text: texto,
+    ...opciones,
+  });
+}
+
+/**
  * Obtiene las actualizaciones pendientes de Telegram.
  *
  * @return {Promise<Object>}
@@ -93,6 +114,7 @@ module.exports = {
   enviarMensaje,
   responderCallback,
   editarTeclado,
+  editarMensaje,
   getUpdates,
 };
 

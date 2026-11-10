@@ -29,6 +29,18 @@ function formatFecha(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX');
 }
 
+// "sáb, 14 nov, 10:00 h" o "sáb, 14 nov · todo el día", en la hora de
+// Tuxtla, para distinguir en la tabla los avisos que son eventos.
+function formatFechaEvento(aviso) {
+  const segundos = aviso.fechaEvento._seconds ?? aviso.fechaEvento.seconds;
+  const fecha = new Date(segundos * 1000);
+  const opciones = { timeZone: 'America/Mexico_City' };
+  const dia = fecha.toLocaleDateString('es-MX', { ...opciones, weekday: 'short', day: 'numeric', month: 'short' });
+  if (aviso.eventoTodoElDia) return `${dia} · todo el día`;
+  const hora = fecha.toLocaleTimeString('es-MX', { ...opciones, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return `${dia}, ${hora} h`;
+}
+
 // La segmentación se parte en la carrera (que va en la etiqueta) y los
 // detalles que la acotan, cada uno en su propio renglón: en una sola
 // línea, "Carrera · 9° · Grupo A" se come el ancho de la tabla.
@@ -80,6 +92,7 @@ function renderAvisos(avisos) {
     <td>
       <strong>${escapeHtml(aviso.titulo)}</strong>
       <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${formatFecha(aviso.fechaCreacion)}</div>
+      ${aviso.fechaEvento ? `<div class="table-subtext">📅 Evento: ${escapeHtml(formatFechaEvento(aviso))}</div>` : ''}
     </td>
     <td class="segmento-celda">${renderSegmento(aviso)}</td>
     <td>${destinatarios}</td>

@@ -37,6 +37,10 @@ main.main-narrow { max-width: 1048px; }
 .form-grid .field-group > div { min-width: 0; }
 .field-hint { margin: -6px 0 12px; color: var(--muted); font-size: 13px; }
 .field-group-label { margin: 0 0 4px; color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+/* La casilla no debe heredar el ancho completo ni el relleno de los
+   demás campos del formulario. */
+.form-grid .checkbox-label { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; cursor: pointer; }
+.form-grid .checkbox-label input[type="checkbox"] { display: inline-block; flex: 0 0 auto; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--blue); cursor: pointer; }
 .notices-list { display: grid; gap: 15px; }.notice-card { padding: 22px; border: 1px solid #d7e3f1; border-left: 4px solid #94a3b8; border-radius: 8px; background: #fff; }.notice-card.unread { border-left-color: #2563eb; background: #f5f9ff; }.notice-card.read { border-left-color: #0f766e; background: #f0fdfa; }.notice-header { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 13px; }.notice-header h3 { margin: 0 0 7px; font: 700 19px 'Space Grotesk', sans-serif; }.notice-date { color: var(--muted); font-size: 13px; }.notice-badge { align-self: flex-start; padding: 6px 10px; border-radius: 999px; color: #075985; background: #dbeafe; font-size: 12px; font-weight: 700; white-space: nowrap; }.notice-badge.read { color: #166534; background: #dcfce7; }.notice-content { margin-bottom: 16px; color: #334e68; line-height: 1.7; white-space: pre-wrap; }.notice-button { padding: 10px 14px; }.notice-button:disabled { cursor: default; opacity: .65; }
 .carrera-badge { display: inline-block; max-width: 100%; white-space: normal; line-height: 1.35; }
 /* La tabla de gestión lleva siete columnas: necesita más ancho que las

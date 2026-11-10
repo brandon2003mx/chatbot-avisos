@@ -460,6 +460,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         semestreId,
         grupoId,
         reemplazaAvisoId,
+        evento,
       } = req.body;
 
       let resultado;
@@ -468,6 +469,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         resultado = await crearYEnviarAviso({
           titulo,
           contenido,
+          evento,
           tipoSegmentacion,
           carreraId,
           semestreId:
@@ -1590,6 +1592,9 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "El título es obligatorio.",
       "El título no puede tener más de 120 caracteres.",
       "El contenido es obligatorio.",
+      "La fecha del evento no es válida.",
+      "La hora del evento no es válida.",
+      "La fecha del evento ya pasó.",
       "El mensaje supera el límite de 4096 caracteres que " +
         "permite Telegram.",
       "El tipo de segmentación no es válido.",

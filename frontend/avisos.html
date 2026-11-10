@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Avisos | ITTG</title>
   <link rel="icon" href="descarga.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
   <script src="/__/firebase/init.js" defer></script>
   <script src="firebase-init.js?v=2" defer></script>
   <script src="auth.js" defer></script>
-  <script src="avisos.js?v=3" defer></script>
+  <script src="avisos.js?v=4" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -55,6 +55,25 @@
           <label for="contenido">Mensaje</label>
           <textarea id="contenido" name="contenido" placeholder="Describe el aviso institucional" required></textarea>
           <p id="contenidoContador" class="char-counter">0 / 4096 caracteres</p>
+        </div>
+        <div class="field-group">
+          <div class="field-full">
+            <p class="field-group-label">Evento</p>
+            <label class="checkbox-label" for="esEvento">
+              <input id="esEvento" name="esEvento" type="checkbox">
+              Este aviso anuncia un evento
+            </label>
+            <p class="field-hint">Los estudiantes lo verán con /eventos en el bot. Déjalo sin marcar si es un aviso normal.</p>
+          </div>
+          <div id="fechaEventoField" hidden>
+            <label for="fechaEvento">Fecha del evento</label>
+            <input id="fechaEvento" name="fechaEvento" type="date">
+          </div>
+          <div id="horaEventoField" hidden>
+            <label for="horaEvento">Hora (opcional)</label>
+            <input id="horaEvento" name="horaEvento" type="time">
+            <p class="field-hint">Déjala vacía si es un evento de todo el día.</p>
+          </div>
         </div>
         <div class="field-group">
           <div class="field-full">

@@ -12,6 +12,13 @@ const {
   buscarEstudiantesPorSegmentacion,
 } = require("./estudianteService");
 
+const {
+  fechaLocal,
+  inicioDelDia,
+  formatearDia,
+  formatearHora,
+} = require("../utils/fechas");
+
 /**
  * Cantidad de destinatarios por lote de envío. Centralizada aquí
  * para poder ajustarla más adelante sin buscar el valor disperso
@@ -60,16 +67,138 @@ const MAX_TITULO = 120;
 const TELEGRAM_MENSAJE_MAX = 4096;
 
 /**
+ * Convierte un Timestamp de Firestore (o un Date) en Date.
+ *
+ * @param {Object|Date} valor Timestamp o Date.
+ * @return {Date}
+ */
+function comoDate(valor) {
+  return typeof valor.toDate === "function" ? valor.toDate() : valor;
+}
+
+/**
+ * Describe cuándo es un evento: "Jueves, 14 de noviembre, 10:00 h"
+ * o "Jueves, 14 de noviembre (todo el día)".
+ *
+ * @param {{fechaEvento: (Object|Date), eventoTodoElDia: boolean}} aviso
+ *   Aviso que es evento.
+ * @return {string}
+ */
+function describirFechaEvento(aviso) {
+  const fecha = comoDate(aviso.fechaEvento);
+
+  if (aviso.eventoTodoElDia === true) {
+    return `${formatearDia(fecha)} (todo el día)`;
+  }
+
+  return `${formatearDia(fecha)}, ${formatearHora(fecha)} h`;
+}
+
+/**
  * Arma el texto con el que un aviso llega por Telegram. Es la única
  * fuente de ese formato: lo usan el envío original, la validación
- * de largo y el reenvío desde /pendientes_lectura, para que el
- * aviso se vea igual en los tres casos.
+ * de largo y los reenvíos desde el bot, para que el aviso se vea
+ * igual en todos los casos.
  *
- * @param {{titulo: string, contenido: string}} aviso Datos del aviso.
+ * Si el aviso es un evento, lleva la fecha debajo del título. El
+ * contador de caracteres del panel (frontend/avisos.js) reproduce
+ * este mismo formato.
+ *
+ * @param {{titulo: string, contenido: string, fechaEvento: *,
+ *   eventoTodoElDia: *}} aviso Datos del aviso.
  * @return {string}
  */
 function construirMensajeAviso(aviso) {
-  return `📢 ${aviso.titulo}\n\n${aviso.contenido}`;
+  const encabezado = `📢 ${aviso.titulo}`;
+
+  if (!aviso.fechaEvento) {
+    return `${encabezado}\n\n${aviso.contenido}`;
+  }
+
+  return (
+    `${encabezado}\n📅 ${describirFechaEvento(aviso)}\n\n` +
+    aviso.contenido
+  );
+}
+
+const FECHA_EVENTO_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
+const HORA_EVENTO_REGEX = /^(\d{2}):(\d{2})(?::\d{2})?$/;
+
+/**
+ * Convierte los datos de evento que manda el panel en lo que se
+ * guarda en Firestore.
+ *
+ * No todos los avisos son eventos: sin `evento` (o con null) el
+ * aviso guarda `fechaEvento: null`, y las consultas de /eventos lo
+ * dejan fuera solas, porque un filtro de rango sobre fechas nunca
+ * incluye valores null.
+ *
+ * La fecha y la hora llegan como las escribió el coordinador en el
+ * calendario de Tuxtla ("2026-11-14", "10:00"). Sin hora, el evento
+ * es de todo el día y se guarda a la medianoche local.
+ *
+ * @param {{fecha: string, hora: ?string}|null|undefined} evento
+ *   Datos del formulario.
+ * @return {{fechaEvento: ?Date, eventoTodoElDia: ?boolean}}
+ */
+function normalizarEvento(evento) {
+  if (evento === undefined || evento === null) {
+    return {fechaEvento: null, eventoTodoElDia: null};
+  }
+
+  const partesFecha = FECHA_EVENTO_REGEX.exec(
+      typeof evento === "object" ? String(evento.fecha || "") : "",
+  );
+
+  if (!partesFecha) {
+    throw new Error("La fecha del evento no es válida.");
+  }
+
+  const [anio, mes, dia] = partesFecha.slice(1).map(Number);
+
+  // Date.UTC acepta fechas como 31 de febrero y las pasa a marzo: si
+  // al volver a leerla cambió el día o el mes, no existía.
+  const comprobacion = new Date(Date.UTC(anio, mes - 1, dia));
+
+  if (
+    anio < 2000 ||
+    comprobacion.getUTCMonth() !== mes - 1 ||
+    comprobacion.getUTCDate() !== dia
+  ) {
+    throw new Error("La fecha del evento no es válida.");
+  }
+
+  if (
+    evento.hora === undefined ||
+    evento.hora === null ||
+    evento.hora === ""
+  ) {
+    return {
+      fechaEvento: fechaLocal(anio, mes, dia),
+      eventoTodoElDia: true,
+    };
+  }
+
+  const partesHora = HORA_EVENTO_REGEX.exec(String(evento.hora));
+
+  if (
+    !partesHora ||
+    Number(partesHora[1]) > 23 ||
+    Number(partesHora[2]) > 59
+  ) {
+    throw new Error("La hora del evento no es válida.");
+  }
+
+  return {
+    fechaEvento: fechaLocal(
+        anio,
+        mes,
+        dia,
+        Number(partesHora[1]),
+        Number(partesHora[2]),
+    ),
+    eventoTodoElDia: false,
+  };
 }
 
 /**
@@ -134,12 +263,25 @@ function validarDatosAviso(aviso) {
     throw new Error("El contenido es obligatorio.");
   }
 
+  const evento = normalizarEvento(aviso.evento);
+
+  // Un evento de hoy que ya empezó sí se acepta (puede ser un aviso
+  // de último momento); uno de un día anterior casi siempre es un
+  // error de captura, y nunca aparecería en /eventos.
+  if (
+    evento.fechaEvento &&
+    evento.fechaEvento < inicioDelDia(new Date())
+  ) {
+    throw new Error("La fecha del evento ya pasó.");
+  }
+
   // El panel ya lo revisa, pero el límite se vuelve a verificar aquí
   // porque es el que de verdad decide si Telegram acepta el mensaje:
   // si se pasa, el envío fallaría para todos los destinatarios.
   const mensaje = construirMensajeAviso({
     titulo: aviso.titulo.trim(),
     contenido: aviso.contenido.trim(),
+    ...evento,
   });
 
   if (mensaje.length > TELEGRAM_MENSAJE_MAX) {
@@ -279,6 +421,7 @@ function validarIdempotencyKey(idempotencyKey) {
  */
 function normalizarAviso(aviso) {
   return {
+    ...normalizarEvento(aviso.evento),
     titulo: aviso.titulo.trim(),
     contenido: aviso.contenido.trim(),
     tipoSegmentacion: aviso.tipoSegmentacion,
@@ -311,6 +454,14 @@ function calcularRequestHash(avisoNormalizado) {
     semestreId: avisoNormalizado.semestreId,
     grupoId: avisoNormalizado.grupoId,
   };
+
+  // Los datos del evento solo entran al hash cuando el aviso es
+  // evento: así el hash de un aviso normal queda igual que antes de
+  // que existieran los eventos.
+  if (avisoNormalizado.fechaEvento) {
+    datos.fechaEvento = avisoNormalizado.fechaEvento.toISOString();
+    datos.eventoTodoElDia = avisoNormalizado.eventoTodoElDia;
+  }
 
   const cadenaEstable = JSON.stringify(
       datos,
@@ -398,6 +549,8 @@ async function reclamarIdempotencyKeyYCrearAviso(
       carreraNombre: descripcionSegmento.carreraNombre,
       semestreNumero: descripcionSegmento.semestreNumero,
       grupoNombre: descripcionSegmento.grupoNombre,
+      fechaEvento: avisoNormalizado.fechaEvento,
+      eventoTodoElDia: avisoNormalizado.eventoTodoElDia,
       autorId: avisoNormalizado.autorId,
       activo: true,
       estadoEnvio: "pendiente",
@@ -949,9 +1102,138 @@ async function obtenerAvisoDeDestinatario(avisoId, telegramId) {
   };
 }
 
+/**
+ * Indica si un aviso va dirigido al segmento académico actual de un
+ * estudiante. Es la misma regla que buscarEstudiantesPorSegmentacion
+ * (estudianteService), vista desde el estudiante en vez de desde el
+ * aviso.
+ *
+ * @param {Object} aviso Aviso.
+ * @param {Object} estudiante Estudiante registrado.
+ * @return {boolean}
+ */
+function avisoCorrespondeAEstudiante(aviso, estudiante) {
+  const mismaCarrera = aviso.carreraId === estudiante.carreraId;
+  const mismoSemestre =
+    String(aviso.semestreId) === String(estudiante.semestreId);
+
+  switch (aviso.tipoSegmentacion) {
+    case "todos":
+      return true;
+    case "carrera":
+      return mismaCarrera;
+    case "semestre":
+      return mismaCarrera && mismoSemestre;
+    case "grupo":
+      return (
+        mismaCarrera &&
+        mismoSemestre &&
+        aviso.grupoId === estudiante.grupoId
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * Obtiene los eventos que le tocan a un estudiante desde hoy y por
+ * cierto número de días (hora de Tuxtla), del más próximo al más
+ * lejano.
+ *
+ * Se filtra por el segmento ACTUAL del estudiante, no por lo que le
+ * llegó: quien se registró o cambió de grupo después del envío
+ * también ve los eventos próximos que ahora le corresponden.
+ *
+ * Firestore solo devuelve los avisos activos con fecha de evento en
+ * el rango (índice activo + fechaEvento); el segmento se filtra
+ * aquí porque depende de varios campos a la vez y son pocos eventos.
+ * Los eventos de hoy con hora que ya pasó se descartan; los de todo
+ * el día se muestran hasta que termina el día.
+ *
+ * @param {Object} estudiante Estudiante registrado.
+ * @param {Date} ahora Momento de la consulta.
+ * @param {number} dias Días a cubrir, contando hoy (1 = solo hoy).
+ * @return {Promise<Array>} Eventos con `fechaEvento` como Date.
+ */
+async function obtenerEventosDeEstudiante(estudiante, ahora, dias) {
+  const snapshot = await db
+      .collection("avisos")
+      .where("activo", "==", true)
+      .where("fechaEvento", ">=", inicioDelDia(ahora))
+      .where("fechaEvento", "<", inicioDelDia(ahora, dias))
+      .orderBy("fechaEvento")
+      .get();
+
+  return snapshot.docs
+      .map((documento) => ({
+        id: documento.id,
+        ...documento.data(),
+        fechaEvento: documento.data().fechaEvento.toDate(),
+      }))
+      .filter((aviso) =>
+        // Un aviso "fallido" nunca se envió a nadie.
+        aviso.estadoEnvio !== "fallido" &&
+        avisoCorrespondeAEstudiante(aviso, estudiante) &&
+        (aviso.eventoTodoElDia === true || aviso.fechaEvento >= ahora),
+      );
+}
+
+/**
+ * Obtiene un evento para mostrárselo completo a un estudiante, junto
+ * con el estado de su lectura si fue destinatario.
+ *
+ * Se permite si el evento le corresponde a su segmento actual (como
+ * en la lista de /eventos) o si en su momento le llegó. El ID viene
+ * de un callback_data, que un cliente modificado puede alterar, así
+ * que no basta con que el aviso exista.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @param {Object} estudiante Estudiante registrado.
+ * @return {Promise<Object|null>} El aviso con `destinatario`
+ *   ({leido} o null si no le llegó), o null si no puede verlo.
+ */
+async function obtenerEventoDeEstudiante(avisoId, estudiante) {
+  const avisoRef = db.collection("avisos").doc(avisoId);
+
+  const [avisoSnap, destinatarioSnap] = await db.getAll(
+      avisoRef,
+      avisoRef
+          .collection("destinatarios")
+          .doc(String(estudiante.telegramId)),
+  );
+
+  if (!avisoSnap.exists) {
+    return null;
+  }
+
+  const aviso = avisoSnap.data();
+
+  if (aviso.activo !== true || !aviso.fechaEvento) {
+    return null;
+  }
+
+  if (
+    !destinatarioSnap.exists &&
+    !avisoCorrespondeAEstudiante(aviso, estudiante)
+  ) {
+    return null;
+  }
+
+  return {
+    id: avisoSnap.id,
+    ...aviso,
+    destinatario: destinatarioSnap.exists ?
+      {leido: destinatarioSnap.data().leido === true} :
+      null,
+  };
+}
+
 module.exports = {
   TAMANO_LOTE,
   MARCADOR_ESTRUCTURA_LISTA,
+  describirFechaEvento,
+  obtenerEventosDeEstudiante,
+  obtenerEventoDeEstudiante,
   construirMensajeAviso,
   tecladoConfirmarLectura,
   tecladoLecturaConfirmada,
