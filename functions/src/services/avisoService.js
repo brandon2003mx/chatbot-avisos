@@ -60,6 +60,54 @@ const MAX_TITULO = 120;
 const TELEGRAM_MENSAJE_MAX = 4096;
 
 /**
+ * Arma el texto con el que un aviso llega por Telegram. Es la única
+ * fuente de ese formato: lo usan el envío original, la validación
+ * de largo y el reenvío desde /pendientes_lectura, para que el
+ * aviso se vea igual en los tres casos.
+ *
+ * @param {{titulo: string, contenido: string}} aviso Datos del aviso.
+ * @return {string}
+ */
+function construirMensajeAviso(aviso) {
+  return `📢 ${aviso.titulo}\n\n${aviso.contenido}`;
+}
+
+/**
+ * Teclado con el botón para confirmar la lectura de un aviso.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @return {Object} reply_markup de Telegram.
+ */
+function tecladoConfirmarLectura(avisoId) {
+  return {
+    inline_keyboard: [[{
+      text: "Confirmar lectura",
+      callback_data: `lectura:${avisoId}`,
+    }]],
+  };
+}
+
+/**
+ * Teclado que reemplaza al de "Confirmar lectura" una vez que el
+ * estudiante confirmó: el mismo botón, pero deshabilitado, para que
+ * se note que ya lo pulsó y no pueda volver a hacerlo.
+ *
+ * `disabled` existe desde la Bot API 10.3. Telegram exige que un
+ * botón tenga un solo campo de acción además del texto, así que el
+ * botón deshabilitado ya no lleva callback_data.
+ *
+ * @return {Object} reply_markup de Telegram.
+ */
+function tecladoLecturaConfirmada() {
+  return {
+    inline_keyboard: [[{
+      text: "Confirmar lectura",
+      disabled: {},
+    }]],
+  };
+}
+
+/**
  * Valida los datos básicos de un aviso.
  *
  * @param {Object} aviso Datos del aviso.
@@ -89,8 +137,10 @@ function validarDatosAviso(aviso) {
   // El panel ya lo revisa, pero el límite se vuelve a verificar aquí
   // porque es el que de verdad decide si Telegram acepta el mensaje:
   // si se pasa, el envío fallaría para todos los destinatarios.
-  const mensaje =
-    `📢 ${aviso.titulo.trim()}\n\n${aviso.contenido.trim()}`;
+  const mensaje = construirMensajeAviso({
+    titulo: aviso.titulo.trim(),
+    contenido: aviso.contenido.trim(),
+  });
 
   if (mensaje.length > TELEGRAM_MENSAJE_MAX) {
     throw new Error(
@@ -800,9 +850,113 @@ async function obtenerAviso(avisoId) {
   };
 }
 
+/**
+ * Obtiene los avisos que se le entregaron a un estudiante y que
+ * todavía no confirma como leídos, del más reciente al más antiguo.
+ *
+ * Parte de los destinatarios (lo que de verdad le llegó) y no de su
+ * carrera/semestre/grupo actual: si cambió de grupo, los avisos que
+ * recibió en el anterior siguen siendo suyos.
+ *
+ * `leido` solo se escribe al confirmar, así que los no leídos no
+ * tienen el campo y no se pueden pedir con `leido == false`: se
+ * filtran aquí, junto con el estado de envío. Por estudiante son
+ * pocos documentos, así que no vale la pena otro índice para eso.
+ *
+ * Requiere el índice de collection group sobre
+ * `destinatarios.telegramId` (ver firestore.indexes.json).
+ *
+ * @param {string} telegramId ID de Telegram del estudiante.
+ * @return {Promise<Array>} Avisos activos sin confirmar.
+ */
+async function obtenerAvisosSinLeer(telegramId) {
+  const snapshot = await db
+      .collectionGroup("destinatarios")
+      .where("telegramId", "==", String(telegramId))
+      .get();
+
+  // Solo cuenta lo que Telegram confirmó como entregado: un aviso
+  // "fallido" nunca le llegó, y pedirle que lo confirme no tendría
+  // sentido.
+  const sinLeer = snapshot.docs.filter((documento) => {
+    const destinatario = documento.data();
+
+    return (
+      destinatario.estado === "enviado" &&
+      destinatario.leido !== true
+    );
+  });
+
+  if (sinLeer.length === 0) {
+    return [];
+  }
+
+  const avisosSnap = await db.getAll(
+      ...sinLeer.map((documento) => documento.ref.parent.parent),
+  );
+
+  // Un aviso reemplazado por su versión corregida queda con
+  // activo: false; si no se descartara, se quedaría "pendiente" para
+  // siempre junto a la versión nueva.
+  return avisosSnap
+      .filter((avisoSnap) =>
+        avisoSnap.exists && avisoSnap.data().activo === true,
+      )
+      .map((avisoSnap) => ({
+        id: avisoSnap.id,
+        ...avisoSnap.data(),
+      }))
+      .sort((a, b) =>
+        b.fechaCreacion.toMillis() - a.fechaCreacion.toMillis(),
+      );
+}
+
+/**
+ * Obtiene un aviso activo solo si el estudiante fue uno de sus
+ * destinatarios. Se usa para reenviarlo desde el bot: el ID llega en
+ * el callback_data de un botón, y Telegram advierte que un cliente
+ * modificado puede mandar ahí cualquier valor, así que no basta con
+ * que el aviso exista.
+ *
+ * Incluye `leido`, para que el reenvío muestre el botón en el estado
+ * correcto: la lista de /pendientes_lectura puede ser vieja y el
+ * aviso haberse confirmado después desde el mensaje original.
+ *
+ * @param {string} avisoId ID del aviso.
+ * @param {string} telegramId ID de Telegram del estudiante.
+ * @return {Promise<Object|null>}
+ */
+async function obtenerAvisoDeDestinatario(avisoId, telegramId) {
+  const avisoRef = db.collection("avisos").doc(avisoId);
+
+  const [avisoSnap, destinatarioSnap] = await db.getAll(
+      avisoRef,
+      avisoRef.collection("destinatarios").doc(String(telegramId)),
+  );
+
+  if (
+    !avisoSnap.exists ||
+    !destinatarioSnap.exists ||
+    avisoSnap.data().activo !== true
+  ) {
+    return null;
+  }
+
+  return {
+    id: avisoSnap.id,
+    ...avisoSnap.data(),
+    leido: destinatarioSnap.data().leido === true,
+  };
+}
+
 module.exports = {
   TAMANO_LOTE,
   MARCADOR_ESTRUCTURA_LISTA,
+  construirMensajeAviso,
+  tecladoConfirmarLectura,
+  tecladoLecturaConfirmada,
+  obtenerAvisosSinLeer,
+  obtenerAvisoDeDestinatario,
   obtenerDestinatarios,
   crearDestinatarios,
   crearLotes,

@@ -22,7 +22,16 @@ const {
 const {
   enviarMensaje,
   responderCallback,
+  editarTeclado,
 } = require("../telegramService");
+
+const {
+  construirMensajeAviso,
+  tecladoConfirmarLectura,
+  tecladoLecturaConfirmada,
+  obtenerAvisosSinLeer,
+  obtenerAvisoDeDestinatario,
+} = require("../avisoService");
 
 /**
  * Obtiene el nombre del usuario desde Telegram, solo para el
@@ -1403,39 +1412,146 @@ async function cancelarModificacion(telegramId) {
 }
 
 /**
- * Procesa una pulsación de botón.
+ * Cuántos avisos sin leer se listan como máximo en un mensaje. Un
+ * botón por aviso: más de 10 vuelve el teclado difícil de recorrer
+ * en el celular.
  *
- * @param {Object} callbackQuery Callback de Telegram.
+ * @type {number}
+ */
+const MAX_PENDIENTES_LISTADOS = 10;
+
+/**
+ * Largo máximo del título dentro de un botón. Telegram corta el
+ * texto de los botones a lo que cabe en pantalla, así que se recorta
+ * aquí para que se lea el número y el inicio del título.
+ *
+ * @type {number}
+ */
+const MAX_TITULO_BOTON = 40;
+
+/**
+ * Los IDs de aviso son IDs automáticos de Firestore (solo letras y
+ * números). Se validan antes de armar una ruta con ellos porque
+ * llegan en el callback_data, que un cliente modificado puede
+ * alterar: una «/» convertiría el ID en otra ruta de Firestore.
+ *
+ * @type {RegExp}
+ */
+const AVISO_ID_REGEX = /^[A-Za-z0-9]+$/;
+
+/**
+ * Fechas cortas ("10 nov") en la hora de Tuxtla. Las funciones
+ * corren en UTC: sin fijar la zona, un aviso enviado de noche
+ * aparecería con la fecha del día siguiente.
+ *
+ * @type {Intl.DateTimeFormat}
+ */
+const FORMATO_FECHA_CORTA = new Intl.DateTimeFormat("es-MX", {
+  timeZone: "America/Mexico_City",
+  day: "numeric",
+  month: "short",
+});
+
+/**
+ * Recorta un texto a un largo máximo, terminando en «…».
+ *
+ * @param {string} texto Texto original.
+ * @param {number} maximo Largo máximo.
+ * @return {string}
+ */
+function recortarTexto(texto, maximo) {
+  if (texto.length <= maximo) {
+    return texto;
+  }
+
+  return `${texto.slice(0, maximo - 1).trimEnd()}…`;
+}
+
+/**
+ * Responde un callback sin dejar que un fallo de Telegram detenga
+ * el resto del proceso: si la respuesta no llega, el botón solo se
+ * queda cargando un momento.
+ *
+ * @param {string} callbackQueryId ID de la consulta.
+ * @param {string} [texto] Aviso emergente opcional.
  * @return {Promise<void>}
  */
-async function procesarCallbackQuery(
-    callbackQuery,
-) {
+async function responderCallbackSinFallar(callbackQueryId, texto) {
   try {
-    await responderCallback(
-        callbackQuery.id,
-    );
+    await responderCallback(callbackQueryId, texto);
   } catch (error) {
     console.error(
         "No se pudo responder el callback:",
         error.message,
     );
   }
+}
 
-  const telegramId = String(
-      callbackQuery.from.id,
-  );
+/**
+ * Deshabilita el botón "Confirmar lectura" del mensaje que se
+ * pulsó, para que el estudiante vea que su confirmación quedó
+ * registrada.
+ *
+ * Es solo visual: si Telegram rechaza la edición, la lectura ya
+ * quedó guardada y el estudiante ya vio el aviso emergente, así que
+ * el error solo se registra.
+ *
+ * @param {Object} mensaje Mensaje del callback (puede faltar si
+ *   Telegram ya no tiene acceso a él).
+ * @return {Promise<void>}
+ */
+async function deshabilitarBotonLectura(mensaje) {
+  if (!mensaje || !mensaje.chat || !mensaje.message_id) {
+    return;
+  }
 
-  const datos = callbackQuery.data || "";
-  const partes = datos.split(":");
+  try {
+    await editarTeclado(
+        mensaje.chat.id,
+        mensaje.message_id,
+        tecladoLecturaConfirmada(),
+    );
+  } catch (error) {
+    console.error(
+        "No se pudo deshabilitar el botón de lectura:",
+        error.message,
+    );
+  }
+}
 
-  if (partes[0] === "lectura" && partes.length === 2) {
-    const avisoId = partes[1];
-    const avisoRef = db.collection("avisos").doc(avisoId);
-    const destinatarioRef = avisoRef
-        .collection("destinatarios").doc(telegramId);
+/**
+ * Registra que el estudiante leyó un aviso, le avisa del resultado
+ * con un mensaje emergente y deshabilita el botón.
+ *
+ * La transacción evita contar dos veces la misma lectura si el
+ * estudiante pulsa el botón repetidamente (o lo pulsa en el aviso
+ * original y en el reenviado desde /pendientes_lectura).
+ *
+ * @param {Object} callbackQuery Callback de Telegram.
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<void>}
+ */
+async function confirmarLectura(callbackQuery, telegramId, avisoId) {
+  const callbackQueryId = callbackQuery.id;
 
-    const resultado = await db.runTransaction(async (transaction) => {
+  if (!AVISO_ID_REGEX.test(avisoId)) {
+    await responderCallbackSinFallar(
+        callbackQueryId,
+        "No se encontró este aviso.",
+    );
+
+    return;
+  }
+
+  const avisoRef = db.collection("avisos").doc(avisoId);
+  const destinatarioRef = avisoRef
+      .collection("destinatarios").doc(telegramId);
+
+  let resultado;
+
+  try {
+    resultado = await db.runTransaction(async (transaction) => {
       const destinatarioSnapshot = await transaction.get(
           destinatarioRef,
       );
@@ -1459,11 +1575,178 @@ async function procesarCallbackQuery(
 
       return "confirmado";
     });
+  } catch (error) {
+    await responderCallbackSinFallar(
+        callbackQueryId,
+        "No se pudo confirmar la lectura. Intenta de nuevo.",
+    );
 
-    if (resultado === "no-encontrado") {
-      await enviarMensaje(telegramId, "No se encontró este aviso.");
-    }
+    throw error;
+  }
 
+  const mensajes = {
+    "confirmado": "✅ Lectura confirmada.",
+    "ya-confirmado": "Ya habías confirmado este aviso.",
+    "no-encontrado": "No se encontró este aviso.",
+  };
+
+  await responderCallbackSinFallar(
+      callbackQueryId,
+      mensajes[resultado],
+  );
+
+  // "ya-confirmado" también deshabilita el botón: pasa cuando
+  // confirmó en otra copia del aviso (la original o la reenviada
+  // desde /pendientes_lectura) y en esta seguía activo.
+  if (resultado === "confirmado" || resultado === "ya-confirmado") {
+    await deshabilitarBotonLectura(callbackQuery.message);
+  }
+}
+
+/**
+ * Muestra al estudiante los avisos que recibió y todavía no confirma
+ * como leídos, con un botón para volver a ver cada uno.
+ *
+ * Se listan solo los más recientes: los más antiguos van apareciendo
+ * conforme se confirman los de arriba.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @return {Promise<void>}
+ */
+async function mostrarPendientesLectura(telegramId) {
+  const estudiante = await obtenerEstudiantePorTelegramId(
+      telegramId,
+  );
+
+  if (!estudiante) {
+    await enviarMensaje(
+        telegramId,
+        "Aún no estás registrado.\n\n" +
+        "Utiliza /start para comenzar.",
+    );
+
+    return;
+  }
+
+  const avisos = await obtenerAvisosSinLeer(telegramId);
+
+  if (avisos.length === 0) {
+    await enviarMensaje(
+        telegramId,
+        "✅ No tienes avisos pendientes: ya confirmaste la " +
+        "lectura de todos.",
+    );
+
+    return;
+  }
+
+  const listados = avisos.slice(0, MAX_PENDIENTES_LISTADOS);
+  const restantes = avisos.length - listados.length;
+
+  const lineas = listados.map((aviso, indice) => {
+    const fecha = FORMATO_FECHA_CORTA.format(
+        aviso.fechaCreacion.toDate(),
+    );
+
+    return `${indice + 1}. ${aviso.titulo} (${fecha})`;
+  });
+
+  let texto =
+    (avisos.length === 1 ?
+      "📬 Tienes 1 aviso sin confirmar:\n\n" :
+      `📬 Tienes ${avisos.length} avisos sin confirmar:\n\n`) +
+    lineas.join("\n");
+
+  if (restantes > 0) {
+    texto +=
+      `\n\n…y ${restantes} más antiguo(s), que aparecerán ` +
+      "aquí conforme confirmes estos.";
+  }
+
+  texto += "\n\nPulsa un aviso para volver a verlo y confirmar " +
+    "su lectura.";
+
+  const botones = listados.map((aviso, indice) => [{
+    text: `📖 ${indice + 1}. ${recortarTexto(
+        aviso.titulo,
+        MAX_TITULO_BOTON,
+    )}`,
+    callback_data: `ver:${aviso.id}`,
+  }]);
+
+  await enviarMensaje(
+      telegramId,
+      texto,
+      {
+        reply_markup: {
+          inline_keyboard: botones,
+        },
+      },
+  );
+}
+
+/**
+ * Vuelve a enviar un aviso completo, con su botón de confirmar
+ * lectura, tal como llegó la primera vez.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {string} avisoId ID del aviso.
+ * @return {Promise<void>}
+ */
+async function reenviarAviso(telegramId, avisoId) {
+  const aviso = AVISO_ID_REGEX.test(avisoId) ?
+    await obtenerAvisoDeDestinatario(avisoId, telegramId) :
+    null;
+
+  if (!aviso) {
+    await enviarMensaje(
+        telegramId,
+        "Este aviso ya no está disponible.",
+    );
+
+    return;
+  }
+
+  await enviarMensaje(
+      telegramId,
+      construirMensajeAviso(aviso),
+      {
+        reply_markup: aviso.leido ?
+          tecladoLecturaConfirmada() :
+          tecladoConfirmarLectura(aviso.id),
+      },
+  );
+}
+
+/**
+ * Procesa una pulsación de botón.
+ *
+ * @param {Object} callbackQuery Callback de Telegram.
+ * @return {Promise<void>}
+ */
+async function procesarCallbackQuery(
+    callbackQuery,
+) {
+  const telegramId = String(
+      callbackQuery.from.id,
+  );
+
+  const datos = callbackQuery.data || "";
+  const partes = datos.split(":");
+
+  // Telegram acepta una sola respuesta por pulsación. La
+  // confirmación de lectura la usa para mostrar el resultado, así
+  // que se atiende antes de la respuesta genérica de los demás
+  // botones.
+  if (partes[0] === "lectura" && partes.length === 2) {
+    await confirmarLectura(callbackQuery, telegramId, partes[1]);
+    return;
+  }
+
+  await responderCallbackSinFallar(callbackQuery.id);
+
+  if (partes[0] === "ver" && partes.length === 2) {
+    await reenviarAviso(telegramId, partes[1]);
     return;
   }
 
@@ -1789,6 +2072,11 @@ async function procesarActualizacion(update) {
     return;
   }
 
+  if (texto === "/pendientes_lectura") {
+    await mostrarPendientesLectura(telegramId);
+    return;
+  }
+
   const pendiente = await obtenerRegistroPendiente(
       telegramId,
   );
@@ -1805,7 +2093,8 @@ async function procesarActualizacion(update) {
 
   await enviarMensaje(
       telegramId,
-      "Utiliza /info o /registro desde el menú.",
+      "Utiliza /info, /registro o /pendientes_lectura " +
+      "desde el menú.",
   );
 }
 

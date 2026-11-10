@@ -40,13 +40,41 @@ async function enviarMensaje(chatId, mensaje, opciones = {}) {
  * Responde a una pulsación de botón inline.
  *
  * @param {string} callbackQueryId ID de la consulta.
+ * @param {string} [texto] Aviso emergente breve que Telegram muestra
+ *   sobre el chat. Sin texto, solo se quita el indicador de carga
+ *   del botón.
  * @return {Promise<Object>}
  */
-async function responderCallback(callbackQueryId) {
+async function responderCallback(callbackQueryId, texto) {
   const telegramApi = obtenerTelegramApi();
 
-  return telegramApi.answerCallbackQuery({
+  const parametros = {
     callback_query_id: callbackQueryId,
+  };
+
+  if (texto) {
+    parametros.text = texto;
+  }
+
+  return telegramApi.answerCallbackQuery(parametros);
+}
+
+/**
+ * Reemplaza los botones de un mensaje ya enviado, sin tocar su
+ * texto.
+ *
+ * @param {string|number} chatId Identificador del chat.
+ * @param {number} messageId ID del mensaje a editar.
+ * @param {Object} replyMarkup Nuevo teclado inline.
+ * @return {Promise<Object|boolean>}
+ */
+async function editarTeclado(chatId, messageId, replyMarkup) {
+  const telegramApi = obtenerTelegramApi();
+
+  return telegramApi.editMessageReplyMarkup({
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup,
   });
 }
 
@@ -64,6 +92,7 @@ async function getUpdates() {
 module.exports = {
   enviarMensaje,
   responderCallback,
+  editarTeclado,
   getUpdates,
 };
 

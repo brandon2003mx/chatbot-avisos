@@ -12,6 +12,11 @@ const {
   enviarMensaje,
 } = require("./telegramService");
 
+const {
+  construirMensajeAviso,
+  tecladoConfirmarLectura,
+} = require("./avisoService");
+
 /**
  * Duración del lease de un destinatario "procesando", en
  * milisegundos.
@@ -224,12 +229,7 @@ async function procesarDestinatario(
 
   try {
     await enviarMensaje(telegramId, mensaje, {
-      reply_markup: {
-        inline_keyboard: [[{
-          text: "Confirmar lectura",
-          callback_data: `lectura:${avisoId}`,
-        }]],
-      },
+      reply_markup: tecladoConfirmarLectura(avisoId),
     });
   } catch (error) {
     errorEnvio = error;
@@ -471,7 +471,7 @@ async function procesarLote(avisoId, loteId) {
   const aviso = avisoSnap.data();
   const lote = loteSnap.data();
 
-  const mensaje = `📢 ${aviso.titulo}\n\n${aviso.contenido}`;
+  const mensaje = construirMensajeAviso(aviso);
 
   for (const telegramId of lote.telegramIds) {
     await procesarDestinatario(avisoId, loteId, telegramId, mensaje);
