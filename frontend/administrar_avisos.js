@@ -18,6 +18,62 @@ const ESTADOS_EN_PROCESO = ['pendiente', 'procesando'];
 const POLL_INTERVAL_MS = 5000;
 let pollTimeoutId = null;
 
+// Última lista recibida del backend. Los filtros trabajan sobre ella en
+// el navegador: cambiar un filtro no vuelve a consultar Firestore, y el
+// refresco automático conserva los filtros elegidos.
+let avisosCargados = [];
+
+const filtros = {
+  texto: document.getElementById('filtroTexto'),
+  estado: document.getElementById('filtroEstado'),
+  segmento: document.getElementById('filtroSegmento'),
+  tipo: document.getElementById('filtroTipo'),
+};
+
+// Se compara sin acentos ni mayúsculas, para que "suspension"
+// encuentre "Suspensión".
+function normalizarTexto(value) {
+  return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+function hayFiltrosActivos() {
+  return Object.values(filtros).some(control => control.value.trim() !== '');
+}
+
+function filtrarAvisos(avisos) {
+  const texto = normalizarTexto(filtros.texto.value);
+  const { value: estado } = filtros.estado;
+  const { value: segmento } = filtros.segmento;
+  const { value: tipo } = filtros.tipo;
+
+  return avisos.filter(aviso => {
+    if (texto && !normalizarTexto(`${aviso.titulo} ${aviso.contenido}`).includes(texto)) return false;
+    if (estado && aviso.estadoEnvio !== estado) return false;
+    if (segmento && aviso.tipoSegmentacion !== segmento) return false;
+    if (tipo === 'evento' && !aviso.fechaEvento) return false;
+    if (tipo === 'aviso' && aviso.fechaEvento) return false;
+    return true;
+  });
+}
+
+function contarAvisos(cantidad) {
+  return `${cantidad} ${cantidad === 1 ? 'aviso' : 'avisos'}`;
+}
+
+function mostrarAvisos() {
+  const filtrando = hayFiltrosActivos();
+  const visibles = filtrarAvisos(avisosCargados);
+  renderAvisos(visibles, filtrando);
+  document.getElementById('filtrosResumen').textContent = filtrando ?
+    `Mostrando ${visibles.length} de ${contarAvisos(avisosCargados.length)}.` :
+    '';
+}
+
+function limpiarFiltros() {
+  Object.values(filtros).forEach(control => { control.value = ''; });
+  mostrarAvisos();
+}
+
 function tieneAvisosEnProceso(avisos) {
   return avisos.some(aviso => ESTADOS_EN_PROCESO.includes(aviso.estadoEnvio));
 }
@@ -73,10 +129,13 @@ function renderSegmento(aviso) {
   return `<div class="segmento-carrera">${escapeHtml(carrera)}</div>${lineas}`;
 }
 
-function renderAvisos(avisos) {
+function renderAvisos(avisos, filtrando = false) {
   const tbody = document.getElementById('managedNotices');
   if (!avisos.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Aún no hay avisos registrados.</td></tr>';
+    const mensaje = filtrando ?
+      'Ningún aviso coincide con los filtros.' :
+      'Aún no hay avisos registrados.';
+    tbody.innerHTML = `<tr><td colspan="7" class="table-empty">${mensaje}</td></tr>`;
     return;
   }
   tbody.innerHTML = avisos.map(aviso => {
@@ -116,7 +175,10 @@ async function loadAvisos() {
   }
   try {
     const { avisos } = await apiRequest('/avisos');
-    renderAvisos(avisos);
+    avisosCargados = avisos;
+    mostrarAvisos();
+    // El refresco depende de toda la lista, no solo de lo filtrado: un
+    // aviso oculto por los filtros sigue avanzando en su envío.
     if (tieneAvisosEnProceso(avisos)) {
       pollTimeoutId = setTimeout(loadAvisos, POLL_INTERVAL_MS);
     }
@@ -127,6 +189,14 @@ async function loadAvisos() {
 }
 
 document.getElementById('manageRefreshButton').addEventListener('click', loadAvisos);
+
+filtros.texto.addEventListener('input', mostrarAvisos);
+[filtros.estado, filtros.segmento, filtros.tipo].forEach(control => {
+  control.addEventListener('change', mostrarAvisos);
+});
+document.getElementById('limpiarFiltrosButton').addEventListener('click', limpiarFiltros);
+// Enter en el buscador no debe recargar la página.
+document.getElementById('noticeFilters').addEventListener('submit', event => event.preventDefault());
 
 const deleteDialog = document.getElementById('deleteDialog');
 const confirmDeleteButton = document.getElementById('confirmDeleteButton');
