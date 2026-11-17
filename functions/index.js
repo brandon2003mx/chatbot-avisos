@@ -103,6 +103,56 @@ function decodificarParametroRuta(valor) {
   return decodeURIComponent(valor);
 }
 
+/**
+ * Roles que pueden usar el panel administrativo.
+ *
+ * @type {Array<string>}
+ */
+const ROLES_PANEL = ["administrador", "coordinador"];
+
+/**
+ * Exige que la solicitud traiga la sesión de un usuario activo con
+ * alguno de los roles indicados. Si no la trae, responde 401 (sin
+ * sesión válida o sin acceso al panel) o 403 (rol insuficiente) y
+ * devuelve null: quien llama solo debe terminar.
+ *
+ * @param {Object} req Solicitud HTTP.
+ * @param {Object} res Respuesta HTTP.
+ * @param {Array<string>} roles Roles permitidos.
+ * @return {Promise<Object|null>} La autenticación, o null si ya se
+ *   respondió con un error.
+ */
+async function exigirRol(req, res, roles) {
+  const encabezado = req.headers.authorization || "";
+
+  if (!encabezado.startsWith("Bearer ")) {
+    res.status(401).json({ok: false, mensaje: "Se requiere autenticación."});
+    return null;
+  }
+
+  try {
+    return await autenticarConRol(encabezado.substring(7), roles);
+  } catch (error) {
+    const erroresAutenticacion = {
+      TOKEN_REQUERIDO: "Se requiere autenticación.",
+      TOKEN_INVALIDO: "Token de autenticación inválido.",
+      USUARIO_NO_REGISTRADO: "El usuario no está registrado en el sistema.",
+      USUARIO_INACTIVO: "El usuario está inactivo.",
+      ROL_NO_AUTORIZADO: "No tienes permisos para esta operación.",
+    };
+
+    const mensaje = erroresAutenticacion[error.message];
+
+    if (!mensaje) {
+      throw error;
+    }
+
+    res.status(error.message === "ROL_NO_AUTORIZADO" ? 403 : 401)
+        .json({ok: false, mensaje});
+    return null;
+  }
+}
+
 exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
   try {
     const ruta = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
@@ -247,7 +297,13 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       });
     }
 
+    // El catálogo solo lo consulta el panel (formularios de avisos y
+    // de carreras), así que también exige una sesión con rol.
     if (req.method === "GET" && ruta === "/carreras") {
+      if (!(await exigirRol(req, res, ROLES_PANEL))) {
+        return;
+      }
+
       const carreras = await obtenerCarreras();
 
       return res.status(200).json({
@@ -327,6 +383,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
     );
 
     if (req.method === "GET" && semestresMatch) {
+      if (!(await exigirRol(req, res, ROLES_PANEL))) {
+        return;
+      }
+
       const carreraId = decodificarParametroRuta(semestresMatch[1]);
 
       const semestres = await obtenerSemestres(carreraId);
@@ -343,6 +403,10 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
     );
 
     if (req.method === "GET" && gruposMatch) {
+      if (!(await exigirRol(req, res, ROLES_PANEL))) {
+        return;
+      }
+
       const carreraId = decodificarParametroRuta(gruposMatch[1]);
       const semestreId = decodificarParametroRuta(gruposMatch[2]);
 
