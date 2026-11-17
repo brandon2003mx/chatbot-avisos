@@ -1,10 +1,13 @@
 requireCoordinador('login.html');
 bindLogout('logoutButton', 'login.html');
 
-authReady.then(user => {
+// Solo el administrador consulta a los estudiantes: se espera a
+// confirmar el rol antes de pedir datos que la API le negaría a un
+// coordinador.
+authReady.then(async user => {
   if (!user) return;
-  mostrarRolUsuario('coordinator', user.email);
-  loadEstudiantes();
+  const rol = await mostrarRolUsuario('coordinator', user.email, { soloAdministrador: true });
+  if (rol) loadEstudiantes();
 });
 
 function renderEstudiantes(estudiantes) {

@@ -18,10 +18,36 @@ const MENSAJES_ERROR_LOGIN = {
 document.getElementById('loginForm').addEventListener('submit', async event => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
+  const email = form.get('email');
   try {
-    await firebase.auth().signInWithEmailAndPassword(form.get('email'), form.get('password'));
-    window.location.href = 'index.html';
+    await firebase.auth().signInWithEmailAndPassword(email, form.get('password'));
   } catch (error) {
     showMessage(MENSAJES_ERROR_LOGIN[error.code] || 'No fue posible iniciar sesión. Inténtalo de nuevo.');
+    return;
   }
+
+  // La contraseña correcta no basta: la cuenta debe tener un rol
+  // activo en el panel. Se comprueba aquí para avisarlo en el mismo
+  // login, en lugar de dejar entrar a páginas sin datos.
+  try {
+    const { rol } = await apiRequest('/me');
+    if (!ROL_LABELS[rol]) {
+      await negarAcceso();
+      return;
+    }
+    guardarRolCacheado(email, rol);
+  } catch (error) {
+    if (error.status === 401) {
+      await negarAcceso();
+      return;
+    }
+    // Sin conexión o falla del servidor: no prueba que falte el
+    // acceso. El inicio vuelve a consultar el rol al cargar.
+  }
+  window.location.href = 'index.html';
 });
+
+async function negarAcceso() {
+  try { await firebase.auth().signOut(); } catch (error) { console.info('Error al cerrar sesión:', error.message); }
+  showMessage(MENSAJE_SIN_ACCESO);
+}

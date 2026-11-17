@@ -3,10 +3,12 @@ bindLogout('logoutButton', 'login.html');
 
 let carreraEnEdicion = null;
 
-authReady.then(user => {
+// Solo el administrador gestiona el catálogo: se espera a confirmar
+// el rol antes de pedir datos que la API le negaría a un coordinador.
+authReady.then(async user => {
   if (!user) return;
-  mostrarRolUsuario('coordinator', user.email);
-  loadCarreras();
+  const rol = await mostrarRolUsuario('coordinator', user.email, { soloAdministrador: true });
+  if (rol) loadCarreras();
 });
 
 function renderCarreras(carreras) {
