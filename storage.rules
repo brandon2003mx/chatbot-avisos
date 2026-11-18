@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Igual que en Firestore, nadie accede a los archivos directamente:
+// las imágenes de los avisos solo se suben y se leen a través de la
+// API (Cloud Functions), que usa el Admin SDK y no pasa por estas
+// reglas.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

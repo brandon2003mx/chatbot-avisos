@@ -152,6 +152,7 @@ function renderAvisos(avisos, filtrando = false) {
       <strong>${escapeHtml(aviso.titulo)}</strong>
       <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${formatFecha(aviso.fechaCreacion)}</div>
       ${aviso.fechaEvento ? `<div class="table-subtext">📅 Evento: ${escapeHtml(formatFechaEvento(aviso))}</div>` : ''}
+      ${aviso.imagen ? '<div class="table-subtext">🖼️ Con imagen</div>' : ''}
     </td>
     <td class="segmento-celda">${renderSegmento(aviso)}</td>
     <td>${destinatarios}</td>

@@ -65,3 +65,8 @@ main.main-narrow { max-width: 1048px; }
 .filters-summary { min-height: 18px; margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 @media (max-width: 850px) { .notice-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.notice-filters .filter-search { grid-column: 1 / -1; } }
 @media (max-width: 520px) { .notice-filters { grid-template-columns: 1fr; } }
+.imagen-preview[hidden] { display: none; }
+.imagen-preview { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 0 0 12px; }
+.imagen-preview img { display: block; max-width: min(100%, 360px); max-height: 240px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fbff; object-fit: contain; }
+.imagen-preview img:not([src]) { width: 160px; height: 100px; }
+.imagen-preview .button-outline { margin-top: 0; }

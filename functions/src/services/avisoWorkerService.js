@@ -10,12 +10,15 @@ const {db} = require("../config/firebase");
 
 const {
   enviarMensaje,
+  enviarFoto,
 } = require("./telegramService");
 
 const {
   construirMensajeAviso,
   tecladoConfirmarLectura,
 } = require("./avisoService");
+
+const {FotoAviso} = require("./imagenAvisoService");
 
 /**
  * Duración del lease de un destinatario "procesando", en
@@ -207,6 +210,8 @@ async function finalizarSiSigueEnProceso(avisoId, telegramId, datos) {
  * @param {string} loteId ID del lote.
  * @param {string} telegramId ID de Telegram del destinatario.
  * @param {string} mensaje Texto del mensaje a enviar.
+ * @param {?FotoAviso} [foto] Imagen del aviso, ya preparada. Con
+ *   imagen, el aviso se envía como foto y el texto va al pie.
  * @return {Promise<void>}
  */
 async function procesarDestinatario(
@@ -214,6 +219,7 @@ async function procesarDestinatario(
     loteId,
     telegramId,
     mensaje,
+    foto = null,
 ) {
   const claim = await reclamarDestinatario(
       avisoId,
@@ -226,16 +232,26 @@ async function procesarDestinatario(
   }
 
   let errorEnvio = null;
+  let mensajeEnviado = null;
 
   try {
-    await enviarMensaje(telegramId, mensaje, {
-      reply_markup: tecladoConfirmarLectura(avisoId),
-    });
+    const teclado = tecladoConfirmarLectura(avisoId);
+
+    mensajeEnviado = foto ?
+      await enviarFoto(telegramId, foto.paraTelegram(), {
+        caption: mensaje,
+        reply_markup: teclado,
+      }) :
+      await enviarMensaje(telegramId, mensaje, {reply_markup: teclado});
   } catch (error) {
     errorEnvio = error;
   }
 
   if (errorEnvio === null) {
+    if (foto) {
+      await foto.recordar(mensajeEnviado);
+    }
+
     try {
       const escrito = await finalizarSiSigueEnProceso(
           avisoId,
@@ -473,8 +489,18 @@ async function procesarLote(avisoId, loteId) {
 
   const mensaje = construirMensajeAviso(aviso);
 
+  // La imagen se descarga antes de reclamar a nadie: si Storage
+  // falla aquí, la tarea se reintenta completa sin dejar destinatarios
+  // a medias.
+  let foto = null;
+
+  if (aviso.imagen) {
+    foto = new FotoAviso(avisoId, aviso.imagen);
+    await foto.preparar();
+  }
+
   for (const telegramId of lote.telegramIds) {
-    await procesarDestinatario(avisoId, loteId, telegramId, mensaje);
+    await procesarDestinatario(avisoId, loteId, telegramId, mensaje, foto);
   }
 
   const refs = lote.telegramIds.map(

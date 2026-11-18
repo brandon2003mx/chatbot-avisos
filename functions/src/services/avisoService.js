@@ -19,6 +19,17 @@ const {
   formatearHora,
 } = require("../utils/fechas");
 
+const {
+  TELEGRAM_PIE_FOTO_MAX,
+  ERROR_PIE_FOTO,
+  decodificarImagen,
+  rutaImagen,
+  guardarImagen,
+  copiarImagen,
+  eliminarImagen,
+  obtenerImagenDeAviso,
+} = require("./imagenAvisoService");
+
 /**
  * Cantidad de destinatarios por lote de envío. Centralizada aquí
  * para poder ajustarla más adelante sin buscar el valor disperso
@@ -240,8 +251,10 @@ function tecladoLecturaConfirmada() {
  * Valida los datos básicos de un aviso.
  *
  * @param {Object} aviso Datos del aviso.
+ * @param {boolean} [conImagen] Si el aviso se enviará como foto: el
+ *   texto pasa a ser el pie de la foto, con un límite menor.
  */
-function validarDatosAviso(aviso) {
+function validarDatosAviso(aviso, conImagen = false) {
   const tiposValidos = [
     "todos",
     "carrera",
@@ -283,6 +296,10 @@ function validarDatosAviso(aviso) {
     contenido: aviso.contenido.trim(),
     ...evento,
   });
+
+  if (conImagen && mensaje.length > TELEGRAM_PIE_FOTO_MAX) {
+    throw new Error(ERROR_PIE_FOTO);
+  }
 
   if (mensaje.length > TELEGRAM_MENSAJE_MAX) {
     throw new Error(
@@ -463,6 +480,12 @@ function calcularRequestHash(avisoNormalizado) {
     datos.eventoTodoElDia = avisoNormalizado.eventoTodoElDia;
   }
 
+  // Igual con la imagen: solo cuenta cuando el aviso la lleva. Con su
+  // hash, reenviar la misma solicitud con otra imagen es un conflicto.
+  if (avisoNormalizado.imagenHash) {
+    datos.imagenHash = avisoNormalizado.imagenHash;
+  }
+
   const cadenaEstable = JSON.stringify(
       datos,
       Object.keys(datos).sort(),
@@ -505,6 +528,8 @@ class IdempotencyKeyExistsError extends Error {
  *   el envío.
  * @param {Object} descripcionSegmento {carreraNombre, semestreNumero,
  *   grupoNombre} en el momento de la creación.
+ * @param {?Object} imagen {tipo, extension, tamano, hash, fileId} si
+ *   el aviso lleva imagen; su ruta se deriva del ID del aviso.
  * @return {Promise<string>} ID del aviso reclamado/creado.
  */
 async function reclamarIdempotencyKeyYCrearAviso(
@@ -514,6 +539,7 @@ async function reclamarIdempotencyKeyYCrearAviso(
     totalDestinatarios,
     totalLotes,
     descripcionSegmento,
+    imagen,
 ) {
   const avisoRef = db.collection("avisos").doc();
 
@@ -551,6 +577,15 @@ async function reclamarIdempotencyKeyYCrearAviso(
       grupoNombre: descripcionSegmento.grupoNombre,
       fechaEvento: avisoNormalizado.fechaEvento,
       eventoTodoElDia: avisoNormalizado.eventoTodoElDia,
+      imagen: imagen ?
+        {
+          ruta: rutaImagen(avisoRef.id, imagen.extension),
+          tipo: imagen.tipo,
+          tamano: imagen.tamano,
+          hash: imagen.hash,
+          fileId: imagen.fileId || null,
+        } :
+        null,
       autorId: avisoNormalizado.autorId,
       activo: true,
       estadoEnvio: "pendiente",
@@ -804,13 +839,48 @@ async function crearLotes(avisoId, estudiantes) {
  * había sido usada para una operación distinta, se lanza un error
  * de conflicto sin revelar datos del aviso existente.
  *
+ * El aviso puede llevar una imagen: `aviso.imagen` (nueva, en
+ * base64) o `aviso.imagenDeAvisoId` (la de otro aviso, al corregirlo
+ * sin cambiarla). La imagen se guarda en Cloud Storage antes de crear
+ * los lotes, así que ya existe cuando el worker empieza a enviar.
+ *
  * @param {Object} aviso Datos del aviso.
  * @param {string} idempotencyKey Clave de idempotencia (UUIDv4).
  * @return {Promise<Object>}
  */
 async function crearYEnviarAviso(aviso, idempotencyKey) {
   validarIdempotencyKey(idempotencyKey);
-  validarDatosAviso(aviso);
+  validarDatosAviso(
+      aviso,
+      Boolean(aviso.imagen || aviso.imagenDeAvisoId),
+  );
+
+  const imagenNueva = aviso.imagen ? decodificarImagen(aviso.imagen) : null;
+  const imagenOrigen = !imagenNueva && aviso.imagenDeAvisoId ?
+    await obtenerImagenDeAviso(aviso.imagenDeAvisoId) :
+    null;
+
+  // Lo que se guarda en el aviso. Al conservar la imagen de otro
+  // aviso también se conserva su file_id: Telegram ya la tiene y no
+  // hace falta volver a subirla.
+  const imagen = imagenNueva ?
+    {
+      tipo: imagenNueva.tipo,
+      extension: imagenNueva.extension,
+      tamano: imagenNueva.tamano,
+      hash: imagenNueva.hash,
+      fileId: null,
+    } :
+    imagenOrigen ?
+      {
+        tipo: imagenOrigen.tipo,
+        extension: imagenOrigen.ruta.split(".").pop(),
+        tamano: imagenOrigen.tamano,
+        hash: imagenOrigen.hash,
+        fileId: imagenOrigen.fileId || null,
+      } :
+      null;
+
   const descripcionSegmento = await validarSegmentacion(aviso);
 
   const destinatarios = await obtenerDestinatarios(
@@ -830,6 +900,11 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
   const totalLotes = Math.ceil(totalValidos / TAMANO_LOTE);
 
   const avisoNormalizado = normalizarAviso(aviso);
+
+  if (imagen) {
+    avisoNormalizado.imagenHash = imagen.hash;
+  }
+
   const requestHash = calcularRequestHash(avisoNormalizado);
 
   let avisoId;
@@ -842,6 +917,7 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
         totalValidos,
         totalLotes,
         descripcionSegmento,
+        imagen,
     );
   } catch (error) {
     if (error instanceof IdempotencyKeyExistsError) {
@@ -856,6 +932,18 @@ async function crearYEnviarAviso(aviso, idempotencyKey) {
   }
 
   try {
+    if (imagenNueva) {
+      await guardarImagen(
+          rutaImagen(avisoId, imagenNueva.extension),
+          imagenNueva,
+      );
+    } else if (imagenOrigen) {
+      await copiarImagen(
+          imagenOrigen.ruta,
+          rutaImagen(avisoId, imagen.extension),
+      );
+    }
+
     await crearDestinatarios(
         avisoId,
         destinatarios,
@@ -970,17 +1058,33 @@ async function ocultarAviso(avisoId) {
 
 /**
  * Elimina un aviso junto con sus subcolecciones (destinatarios y
- * lotes), de forma permanente e irreversible. No afecta los
- * mensajes ya entregados por Telegram: solo borra el registro en
- * Firestore.
+ * lotes) y su imagen, de forma permanente e irreversible. No afecta
+ * los mensajes ya entregados por Telegram: solo borra el registro en
+ * Firestore y el archivo en Cloud Storage.
  *
  * @param {string} avisoId ID del aviso.
  * @return {Promise<void>}
  */
 async function eliminarAviso(avisoId) {
   const avisoRef = await obtenerAvisoRefTerminal(avisoId);
+  const {imagen} = (await avisoRef.get()).data();
 
   await db.recursiveDelete(avisoRef);
+
+  // El aviso ya no existe: si el archivo no se pudo borrar, solo
+  // queda una imagen huérfana, así que no se le reporta al usuario
+  // como un fallo de la eliminación.
+  if (imagen && imagen.ruta) {
+    try {
+      await eliminarImagen(imagen.ruta);
+    } catch (error) {
+      console.error(
+          `No se pudo borrar la imagen ${imagen.ruta} del aviso ` +
+          `eliminado ${avisoId}:`,
+          error.message,
+      );
+    }
+  }
 }
 
 /**

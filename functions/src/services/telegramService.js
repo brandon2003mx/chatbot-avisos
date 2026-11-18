@@ -37,6 +37,26 @@ async function enviarMensaje(chatId, mensaje, opciones = {}) {
 }
 
 /**
+ * Envía una foto con texto al pie.
+ *
+ * @param {string|number} chatId Identificador del chat.
+ * @param {string|InputFile} foto file_id de una foto que Telegram ya
+ *   tiene, o el archivo para subirla.
+ * @param {Object} opciones Opciones de Telegram (caption,
+ *   reply_markup, ...).
+ * @return {Promise<Object>} Mensaje enviado.
+ */
+async function enviarFoto(chatId, foto, opciones = {}) {
+  const telegramApi = obtenerTelegramApi();
+
+  return telegramApi.sendPhoto({
+    chat_id: chatId,
+    photo: foto,
+    ...opciones,
+  });
+}
+
+/**
  * Responde a una pulsación de botón inline.
  *
  * @param {string} callbackQueryId ID de la consulta.
@@ -112,6 +132,7 @@ async function getUpdates() {
 
 module.exports = {
   enviarMensaje,
+  enviarFoto,
   responderCallback,
   editarTeclado,
   editarMensaje,

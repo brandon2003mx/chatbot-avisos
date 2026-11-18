@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Avisos | ITTG</title>
   <link rel="icon" href="descarga.png">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
   <script src="/__/firebase/init.js" defer></script>
   <script src="firebase-init.js?v=2" defer></script>
   <script src="auth.js?v=2" defer></script>
-  <script src="avisos.js?v=4" defer></script>
+  <script src="avisos.js?v=5" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -55,6 +55,15 @@
           <label for="contenido">Mensaje</label>
           <textarea id="contenido" name="contenido" placeholder="Describe el aviso institucional" required></textarea>
           <p id="contenidoContador" class="char-counter">0 / 4096 caracteres</p>
+        </div>
+        <div class="field-full">
+          <label for="imagen">Imagen (opcional)</label>
+          <input id="imagen" type="file" accept="image/jpeg,image/png,image/webp">
+          <p class="field-hint">JPG, PNG o WebP. Se envía como foto y el mensaje va al pie, con un máximo de 1024 caracteres.</p>
+          <div id="imagenVistaPrevia" class="imagen-preview" hidden>
+            <img id="imagenPreviewImg" alt="Vista previa de la imagen del aviso">
+            <button id="quitarImagenButton" class="button-outline dark" type="button">Quitar imagen</button>
+          </div>
         </div>
         <div class="field-group">
           <div class="field-full">

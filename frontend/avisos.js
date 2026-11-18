@@ -131,15 +131,148 @@ function lineaEvento() {
 // contador sea honesto sobre lo que de verdad se manda.
 const TELEGRAM_MENSAJE_MAX = 4096;
 
+// Con imagen, el aviso se envía como foto y el mensaje va al pie,
+// donde Telegram solo admite 1024 caracteres.
+const TELEGRAM_PIE_FOTO_MAX = 1024;
+
+function limiteMensaje() {
+  return tieneImagen() ? TELEGRAM_PIE_FOTO_MAX : TELEGRAM_MENSAJE_MAX;
+}
+
 function calcularLargoMensaje() {
   return `📢 ${tituloInput.value}${lineaEvento()}\n\n${contenidoInput.value}`.length;
 }
 
 function actualizarContadorCaracteres() {
   const largo = calcularLargoMensaje();
-  contenidoContador.textContent = `${largo} / ${TELEGRAM_MENSAJE_MAX} caracteres`;
-  contenidoContador.classList.toggle('char-counter-warning', largo > TELEGRAM_MENSAJE_MAX * 0.9 && largo <= TELEGRAM_MENSAJE_MAX);
-  contenidoContador.classList.toggle('char-counter-over', largo > TELEGRAM_MENSAJE_MAX);
+  const limite = limiteMensaje();
+  contenidoContador.textContent = `${largo} / ${limite} caracteres${tieneImagen() ? ' (con imagen)' : ''}`;
+  contenidoContador.classList.toggle('char-counter-warning', largo > limite * 0.9 && largo <= limite);
+  contenidoContador.classList.toggle('char-counter-over', largo > limite);
+}
+
+// ----- Imagen del aviso -----
+
+const imagenInput = document.getElementById('imagen');
+const imagenVistaPrevia = document.getElementById('imagenVistaPrevia');
+const imagenPreviewImg = document.getElementById('imagenPreviewImg');
+const quitarImagenButton = document.getElementById('quitarImagenButton');
+
+// Telegram reduce las fotos a 1280 px por lado: subir más resolución
+// solo hace más lento el envío. Se convierte a JPEG, que es lo que
+// Telegram entrega de todos modos.
+const IMAGEN_LADO_MAX = 1280;
+const IMAGEN_CALIDAD = 0.85;
+// Telegram rechaza fotos cuyo lado largo mida más de 20 veces el corto.
+const IMAGEN_PROPORCION_MAX = 20;
+
+let imagenNueva = null; // base64 (JPEG) de la imagen elegida
+let conservarImagenOriginal = false; // al corregir, conservar la del original
+let urlVistaPrevia = null;
+
+function tieneImagen() {
+  return Boolean(imagenNueva) || conservarImagenOriginal;
+}
+
+function mostrarVistaPrevia(src) {
+  if (urlVistaPrevia) URL.revokeObjectURL(urlVistaPrevia);
+  urlVistaPrevia = src && src.startsWith('blob:') ? src : null;
+  if (src) {
+    imagenPreviewImg.src = src;
+  } else {
+    imagenPreviewImg.removeAttribute('src');
+  }
+  imagenVistaPrevia.hidden = false;
+  actualizarContadorCaracteres();
+}
+
+function quitarImagen() {
+  imagenNueva = null;
+  conservarImagenOriginal = false;
+  imagenInput.value = '';
+  if (urlVistaPrevia) URL.revokeObjectURL(urlVistaPrevia);
+  urlVistaPrevia = null;
+  imagenPreviewImg.removeAttribute('src');
+  imagenVistaPrevia.hidden = true;
+  actualizarContadorCaracteres();
+}
+
+function leerImagen(archivo) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(archivo);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No fue posible leer la imagen. Usa un archivo JPG, PNG o WebP.'));
+    };
+    img.src = url;
+  });
+}
+
+// Reduce la imagen a 1280 px por lado y la convierte a JPEG. Devuelve
+// un data URL.
+async function prepararImagen(archivo) {
+  const img = await leerImagen(archivo);
+  const ladoMayor = Math.max(img.naturalWidth, img.naturalHeight);
+  const ladoMenor = Math.min(img.naturalWidth, img.naturalHeight);
+  if (!ladoMenor || ladoMayor / ladoMenor > IMAGEN_PROPORCION_MAX) {
+    throw new Error('La imagen es demasiado alargada: Telegram no acepta fotos cuyo lado largo mida más de 20 veces el corto.');
+  }
+  const escala = Math.min(1, IMAGEN_LADO_MAX / ladoMayor);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+  const contexto = canvas.getContext('2d');
+  // JPEG no tiene transparencia: las zonas transparentes de un PNG
+  // quedan en blanco en lugar de negro.
+  contexto.fillStyle = '#ffffff';
+  contexto.fillRect(0, 0, canvas.width, canvas.height);
+  contexto.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', IMAGEN_CALIDAD);
+}
+
+imagenInput.addEventListener('change', async () => {
+  const archivo = imagenInput.files[0];
+  if (!archivo) return;
+  if (!/^image\/(jpeg|png|webp)$/.test(archivo.type)) {
+    showMessage('Usa una imagen JPG, PNG o WebP.');
+    quitarImagen();
+    return;
+  }
+  try {
+    const dataUrl = await prepararImagen(archivo);
+    imagenNueva = dataUrl.split(',')[1];
+    conservarImagenOriginal = false;
+    mostrarVistaPrevia(dataUrl);
+  } catch (error) {
+    showMessage(error.message);
+    quitarImagen();
+  }
+});
+
+quitarImagenButton.addEventListener('click', quitarImagen);
+
+// Al corregir un aviso con imagen, la muestra y la conserva salvo que
+// el coordinador la quite o elija otra. Se pide a la API con la sesión
+// porque la imagen no es pública.
+async function cargarImagenOriginal(avisoId) {
+  conservarImagenOriginal = true;
+  try {
+    const headers = {};
+    if (firebase.auth().currentUser) {
+      headers.Authorization = `Bearer ${await firebase.auth().currentUser.getIdToken()}`;
+    }
+    const response = await fetch(`${API_URL}/avisos/${encodeURIComponent(avisoId)}/imagen`, { headers });
+    if (!response.ok) throw new Error();
+    mostrarVistaPrevia(URL.createObjectURL(await response.blob()));
+  } catch (error) {
+    mostrarVistaPrevia(null);
+    showMessage('No fue posible mostrar la imagen del aviso. Si no eliges otra ni la quitas, se conservará la original.');
+  }
 }
 
 tituloInput.addEventListener('input', actualizarContadorCaracteres);
@@ -217,6 +350,9 @@ async function precargarEdicion(avisoId) {
       await loadGrupos(aviso.carreraId, String(aviso.semestreId));
       grupoSelect.value = aviso.grupoId;
     }
+    if (aviso.imagen) {
+      await cargarImagenOriginal(avisoId);
+    }
     actualizarContadorCaracteres();
   } catch (error) {
     showMessage(error.message);
@@ -229,8 +365,10 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
   const formElement = event.currentTarget;
   const submitButton = formElement.querySelector('button[type="submit"]');
 
-  if (calcularLargoMensaje() > TELEGRAM_MENSAJE_MAX) {
-    showMessage(`El mensaje supera el límite de ${TELEGRAM_MENSAJE_MAX} caracteres que permite Telegram.`);
+  if (calcularLargoMensaje() > limiteMensaje()) {
+    showMessage(tieneImagen() ?
+      `Con imagen, el mensaje no puede pasar de ${TELEGRAM_PIE_FOTO_MAX} caracteres, el límite de Telegram para el texto de una foto.` :
+      `El mensaje supera el límite de ${TELEGRAM_MENSAJE_MAX} caracteres que permite Telegram.`);
     return;
   }
 
@@ -260,6 +398,11 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
   if (reemplazaAvisoId) {
     body.reemplazaAvisoId = reemplazaAvisoId;
   }
+  if (imagenNueva) {
+    body.imagen = imagenNueva;
+  } else if (conservarImagenOriginal && reemplazaAvisoId) {
+    body.conservarImagen = true;
+  }
   submitButton.disabled = true;
   try {
     const payload = await apiRequest('/avisos', {
@@ -272,6 +415,7 @@ document.getElementById('avisoForm').addEventListener('submit', async event => {
       : `Aviso creado y puesto en procesamiento para ${payload.destinatarios} destinatario(s). Revisa su avance en Gestión de Avisos.`;
     showMessage(mensajeExito, 'success');
     formElement.reset();
+    quitarImagen();
     activarModoCreacion();
     updateVisibleFields();
     updateEventoFields();

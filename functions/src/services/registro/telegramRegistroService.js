@@ -21,10 +21,13 @@ const {
 
 const {
   enviarMensaje,
+  enviarFoto,
   responderCallback,
   editarTeclado,
   editarMensaje,
 } = require("../telegramService");
+
+const {FotoAviso} = require("../imagenAvisoService");
 
 const {
   ZONA_HORARIA,
@@ -1716,15 +1719,51 @@ async function reenviarAviso(telegramId, avisoId) {
     return;
   }
 
-  await enviarMensaje(
-      telegramId,
-      construirMensajeAviso(aviso),
-      {
-        reply_markup: aviso.leido ?
-          tecladoLecturaConfirmada() :
-          tecladoConfirmarLectura(aviso.id),
-      },
-  );
+  await enviarAvisoCompleto(telegramId, aviso, {
+    reply_markup: aviso.leido ?
+      tecladoLecturaConfirmada() :
+      tecladoConfirmarLectura(aviso.id),
+  });
+}
+
+/**
+ * Envía un aviso completo tal como llegó la primera vez: como foto
+ * con el texto al pie si tiene imagen, o como mensaje de texto.
+ *
+ * @param {string} telegramId ID de Telegram.
+ * @param {Object} aviso Aviso, con su `id`.
+ * @param {Object} opciones Opciones de Telegram (reply_markup).
+ * @return {Promise<void>}
+ */
+async function enviarAvisoCompleto(telegramId, aviso, opciones) {
+  const mensaje = construirMensajeAviso(aviso);
+
+  if (aviso.imagen) {
+    try {
+      const foto = new FotoAviso(aviso.id, aviso.imagen);
+
+      await foto.preparar();
+
+      const enviado = await enviarFoto(telegramId, foto.paraTelegram(), {
+        caption: mensaje,
+        ...opciones,
+      });
+
+      await foto.recordar(enviado);
+
+      return;
+    } catch (error) {
+      // Mejor el aviso sin imagen que no mostrarlo: el estudiante lo
+      // pidió y el texto es lo que tiene que leer.
+      console.error(
+          `No se pudo reenviar la imagen del aviso ${aviso.id}; se ` +
+          "envía solo el texto:",
+          error.message,
+      );
+    }
+  }
+
+  await enviarMensaje(telegramId, mensaje, opciones);
 }
 
 /**
@@ -1941,11 +1980,7 @@ async function mostrarEvento(telegramId, avisoId) {
       tecladoConfirmarLectura(evento.id);
   }
 
-  await enviarMensaje(
-      telegramId,
-      construirMensajeAviso(evento),
-      opciones,
-  );
+  await enviarAvisoCompleto(telegramId, evento, opciones);
 }
 
 /**

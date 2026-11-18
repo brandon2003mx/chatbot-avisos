@@ -52,8 +52,10 @@ No hay una vista web de estudiante. El flujo de los estudiantes se realiza desde
 3. Inicia el entorno local desde la raíz del proyecto:
 
 	```powershell
-	firebase emulators:start --only auth,firestore,functions,hosting
+	firebase emulators:start --only auth,firestore,functions,hosting,storage
 	```
+
+	El emulador de Storage guarda las imágenes de los avisos. Sin él, crear un aviso con imagen falla a propósito, para no escribir en el bucket de producción.
 
 4. Abre el panel mediante Firebase Hosting:
 

@@ -40,6 +40,11 @@ const {
 } = require("./src/services/avisoWorkerService");
 
 const {
+  ERRORES_IMAGEN,
+  leerImagen,
+} = require("./src/services/imagenAvisoService");
+
+const {
   autenticarUsuario,
   autenticarConRol,
 } = require("./src/services/authService");
@@ -525,6 +530,8 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
         grupoId,
         reemplazaAvisoId,
         evento,
+        imagen,
+        conservarImagen,
       } = req.body;
 
       let resultado;
@@ -542,6 +549,12 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
               String(semestreId),
           grupoId,
           autorId: autenticacion.uid,
+          // Imagen nueva (base64), o la del aviso que se corrige.
+          imagen: imagen || null,
+          imagenDeAvisoId:
+            conservarImagen === true && reemplazaAvisoId ?
+              String(reemplazaAvisoId) :
+              null,
         }, idempotencyKey);
       } catch (error) {
         if (error.idempotencyConflict) {
@@ -1509,6 +1522,35 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       });
     }
 
+    const imagenAvisoMatch = ruta.match(
+        /^\/avisos\/([A-Za-z0-9]+)\/imagen$/,
+    );
+
+    // Imagen de un aviso, para mostrarla en el panel al corregirlo.
+    // Pasa por la API (y no por un enlace público de Storage) para que
+    // solo la vea el personal con sesión.
+    if (req.method === "GET" && imagenAvisoMatch) {
+      if (!(await exigirRol(req, res, ROLES_PANEL))) {
+        return;
+      }
+
+      const aviso = await obtenerAviso(imagenAvisoMatch[1]);
+
+      if (!aviso || !aviso.imagen) {
+        return res.status(404).json({
+          ok: false,
+          mensaje: "El aviso no tiene imagen.",
+        });
+      }
+
+      const bytes = await leerImagen(aviso.imagen.ruta);
+
+      res.set("Content-Type", aviso.imagen.tipo);
+      res.set("Cache-Control", "private, max-age=300");
+
+      return res.status(200).send(bytes);
+    }
+
     const avisoIdMatch = ruta.match(
         /^\/avisos\/([^/]+)$/,
     );
@@ -1697,6 +1739,7 @@ exports.api = onRequest({secrets: [telegramBotToken]}, async (req, res) => {
       "El grupo está inactivo.",
       "El aviso no existe.",
       "El aviso todavía está en proceso de envío.",
+      ...ERRORES_IMAGEN,
     ];
 
     if (erroresCliente.includes(error.message)) {

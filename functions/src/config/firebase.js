@@ -55,10 +55,14 @@ if (!esEntornoDesplegado() && !process.env.FIRESTORE_EMULATOR_HOST) {
 
 initializeApp({
   projectId: "chatbot-de-difusion",
+  // Bucket predeterminado del proyecto (el mismo que muestra la
+  // configuración web). Guarda las imágenes de los avisos.
+  storageBucket: "chatbot-de-difusion.firebasestorage.app",
 });
 
 const db = getFirestore();
 
 module.exports = {
   db,
+  esEntornoDesplegado,
 };
