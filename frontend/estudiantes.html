@@ -6,13 +6,16 @@
   <meta name="description" content="Estudiantes registrados en el sistema de avisos ITTG">
   <title>Estudiantes | ITTG</title>
   <link rel="icon" href="descarga.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=5">
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" defer></script>
   <script src="/__/firebase/init.js" defer></script>
-  <script src="firebase-init.js?v=2" defer></script>
-  <script src="auth.js?v=2" defer></script>
+  <script src="firebase-init.js?v=3" defer></script>
+  <script src="auth.js?v=3" defer></script>
   <script src="estudiantes.js?v=2" defer></script>
+  <script type="speculationrules">
+  {"prerender": [{"source": "document", "where": {"and": [{"href_matches": "/*.html"}, {"not": {"href_matches": "/login.html"}}]}, "eagerness": "moderate"}]}
+  </script>
 </head>
 <body>
   <header class="site-header">
@@ -32,13 +35,12 @@
     </div>
     <nav class="top-nav" aria-label="Navegación principal">
       <a href="index.html">Inicio</a>
-      <a href="index.html#resumen">Resumen</a>
-      <a href="index.html#distribucion">Distribución</a>
       <a href="avisos.html">Redactar Aviso</a>
       <a href="administrar_avisos.html">Gestión de Avisos</a>
       <a href="carreras.html" data-solo-admin hidden>Carreras</a>
-      <a class="active" href="estudiantes.html" data-solo-admin hidden>Estudiantes</a>
+      <a class="active" href="estudiantes.html" data-solo-admin hidden>Estudiantes<span class="menu-indicador" aria-hidden="true"></span></a>
     </nav>
+    <script src="menu.js?v=1"></script>
   </header>
 
   <main class="main-narrow">

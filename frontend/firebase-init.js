@@ -25,5 +25,10 @@ const authReady = new Promise(resolve => { resolveAuthReady = resolve; });
 firebase.auth(firebaseApp).onAuthStateChanged(user => resolveAuthReady(user));
 
 function requireCoordinador(redirect) {
-  authReady.then(user => { if (!user) window.location.href = redirect; });
+  authReady.then(user => {
+    if (user) return;
+    // Sin sesión: se olvida el rol que menu.js pinta al instante.
+    olvidarRolCacheado();
+    window.location.href = redirect;
+  });
 }

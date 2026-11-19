@@ -7,12 +7,22 @@ function leerRolCacheado(email) {
   try { return sessionStorage.getItem(`rol:${email}`); } catch (error) { return null; }
 }
 
+// panel:rol y panel:correo los lee menu.js para pintar el encabezado y
+// el menú antes de que Firebase confirme la sesión.
 function guardarRolCacheado(email, rol) {
-  try { sessionStorage.setItem(`rol:${email}`, rol); } catch (error) { /* sin caché disponible */ }
+  try {
+    sessionStorage.setItem(`rol:${email}`, rol);
+    sessionStorage.setItem('panel:rol', rol);
+    sessionStorage.setItem('panel:correo', email);
+  } catch (error) { /* sin caché disponible */ }
 }
 
 function olvidarRolCacheado(email) {
-  try { sessionStorage.removeItem(`rol:${email}`); } catch (error) { /* sin caché disponible */ }
+  try {
+    if (email) sessionStorage.removeItem(`rol:${email}`);
+    sessionStorage.removeItem('panel:rol');
+    sessionStorage.removeItem('panel:correo');
+  } catch (error) { /* sin caché disponible */ }
 }
 
 const MENSAJE_SIN_ACCESO = 'Tu cuenta no tiene acceso al panel. Contacta al administrador.';
@@ -142,6 +152,7 @@ function showMessage(message, type = 'error') {
 
 function bindLogout(buttonId, redirect) {
   document.getElementById(buttonId)?.addEventListener('click', async () => {
+    olvidarRolCacheado(firebase.auth().currentUser?.email);
     try { await firebase.auth().signOut(); } catch (error) { console.info('Error al cerrar sesión:', error.message); }
     window.location.href = redirect;
   });
