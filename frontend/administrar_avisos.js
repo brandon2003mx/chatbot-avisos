@@ -129,6 +129,23 @@ function renderSegmento(aviso) {
   return `<div class="segmento-carrera">${escapeHtml(carrera)}</div>${lineas}`;
 }
 
+// Íconos de línea (trazo con el color del texto), en lugar de emojis,
+// para que se vean iguales en cualquier sistema operativo.
+const ICONO_SVG = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+const ICONO_EVENTO = `<svg ${ICONO_SVG}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`;
+const ICONO_IMAGEN = `<svg ${ICONO_SVG}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>`;
+
+function renderEtiquetas(aviso) {
+  const etiquetas = [];
+  if (aviso.fechaEvento) {
+    etiquetas.push(`<span class="aviso-etiqueta">${ICONO_EVENTO}Evento: ${escapeHtml(formatFechaEvento(aviso))}</span>`);
+  }
+  if (aviso.imagen) {
+    etiquetas.push(`<span class="aviso-etiqueta">${ICONO_IMAGEN}Con imagen</span>`);
+  }
+  return etiquetas.length ? `<div class="aviso-etiquetas">${etiquetas.join('')}</div>` : '';
+}
+
 function renderAvisos(avisos, filtrando = false) {
   const tbody = document.getElementById('managedNotices');
   if (!avisos.length) {
@@ -151,8 +168,7 @@ function renderAvisos(avisos, filtrando = false) {
     <td>
       <strong>${escapeHtml(aviso.titulo)}</strong>
       <div class="table-subtext">${escapeHtml(ESTADO_LABELS[aviso.estadoEnvio] || aviso.estadoEnvio)} · ${formatFecha(aviso.fechaCreacion)}</div>
-      ${aviso.fechaEvento ? `<div class="table-subtext">📅 Evento: ${escapeHtml(formatFechaEvento(aviso))}</div>` : ''}
-      ${aviso.imagen ? '<div class="table-subtext">🖼️ Con imagen</div>' : ''}
+      ${renderEtiquetas(aviso)}
     </td>
     <td class="segmento-celda">${renderSegmento(aviso)}</td>
     <td>${destinatarios}</td>

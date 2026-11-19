@@ -70,3 +70,6 @@ main.main-narrow { max-width: 1048px; }
 .imagen-preview img { display: block; max-width: min(100%, 360px); max-height: 240px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fbff; object-fit: contain; }
 .imagen-preview img:not([src]) { width: 160px; height: 100px; }
 .imagen-preview .button-outline { margin-top: 0; }
+.aviso-etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.aviso-etiqueta { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border: 1px solid var(--line); border-radius: 999px; background: #f5f8fc; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.6; white-space: nowrap; }
+.aviso-etiqueta svg { flex: 0 0 auto; width: 13px; height: 13px; color: var(--blue); }
