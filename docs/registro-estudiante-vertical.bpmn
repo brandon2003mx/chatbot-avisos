@@ -86,7 +86,7 @@
       <bpmn:outgoing>F_8</bpmn:outgoing>
     </bpmn:userTask>
 
-    <bpmn:exclusiveGateway id="GW_formato" name="¿Tiene 8 dígitos?">
+    <bpmn:exclusiveGateway id="GW_formato" name="¿Formato válido?">
       <bpmn:incoming>F_8</bpmn:incoming>
       <bpmn:outgoing>F_9</bpmn:outgoing>
       <bpmn:outgoing>F_11</bpmn:outgoing>
@@ -180,7 +180,7 @@
     </bpmn:endEvent>
 
     <bpmn:textAnnotation id="TextAnnotation_1">
-      <bpmn:text>El correo se deduce del número de control (l…@tuxtla.tecnm.mx). El código vence en 10 minutos y admite hasta 3 reenvíos.</bpmn:text>
+      <bpmn:text>El correo se deduce del número de control (l…@tuxtla.tecnm.mx). El código vence en 10 minutos y se envía como máximo 3 veces.</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:association id="Association_1" sourceRef="ST_5" targetRef="TextAnnotation_1" />
 

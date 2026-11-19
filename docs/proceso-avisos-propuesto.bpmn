@@ -1,0 +1,518 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_avisos"
+                  targetNamespace="http://tuxtla.tecnm.mx/chatbot-avisos">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_Avisos" name="Proceso de avisos" processRef="Process_avisos" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_avisos" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_Coordinador" name="Coordinador">
+        <bpmn:flowNodeRef>Start_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_redactar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_segmento</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_division</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_todos</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_carrera</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_semestre</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_grupo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_union</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_enviar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_seguimiento</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Sistema" name="Sistema">
+        <bpmn:flowNodeRef>ST_verificar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_consultar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_destinatarios</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_sin_destinatarios</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_sin_destinatarios</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_registrar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_encolar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SND_lote</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>GW_limite</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_reintentar</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_resultado</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_lectura</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>ST_boton</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Chatbot" name="Chatbot">
+        <bpmn:flowNodeRef>RCV_instruccion</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SND_entrega</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>SND_confirmacion</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Estudiantes" name="Estudiantes">
+        <bpmn:flowNodeRef>RCV_notificacion</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_leer</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>UT_confirmar</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_1">
+      <bpmn:outgoing>F_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="UT_redactar" name="Redactar aviso">
+      <bpmn:incoming>F_1</bpmn:incoming>
+      <bpmn:outgoing>F_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_segmento" name="Seleccionar segmento">
+      <bpmn:incoming>F_2</bpmn:incoming>
+      <bpmn:outgoing>F_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_division">
+      <bpmn:incoming>F_3</bpmn:incoming>
+      <bpmn:outgoing>F_4</bpmn:outgoing>
+      <bpmn:outgoing>F_5</bpmn:outgoing>
+      <bpmn:outgoing>F_6</bpmn:outgoing>
+      <bpmn:outgoing>F_7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="UT_todos" name="Todos los estudiantes">
+      <bpmn:incoming>F_4</bpmn:incoming>
+      <bpmn:outgoing>F_8</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_carrera" name="Carrera">
+      <bpmn:incoming>F_5</bpmn:incoming>
+      <bpmn:outgoing>F_9</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_semestre" name="Semestre">
+      <bpmn:incoming>F_6</bpmn:incoming>
+      <bpmn:outgoing>F_10</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_grupo" name="Grupo">
+      <bpmn:incoming>F_7</bpmn:incoming>
+      <bpmn:outgoing>F_11</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_union">
+      <bpmn:incoming>F_8</bpmn:incoming>
+      <bpmn:incoming>F_9</bpmn:incoming>
+      <bpmn:incoming>F_10</bpmn:incoming>
+      <bpmn:incoming>F_11</bpmn:incoming>
+      <bpmn:outgoing>F_12</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="UT_enviar" name="Enviar aviso">
+      <bpmn:incoming>F_12</bpmn:incoming>
+      <bpmn:outgoing>F_13</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_seguimiento" name="Consultar seguimiento del aviso">
+      <bpmn:incoming>F_33</bpmn:incoming>
+      <bpmn:outgoing>F_34</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_1">
+      <bpmn:incoming>F_34</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ST_verificar" name="Verificar sesión, rol y datos del aviso">
+      <bpmn:incoming>F_13</bpmn:incoming>
+      <bpmn:outgoing>F_14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ST_consultar" name="Consultar estudiantes del segmento">
+      <bpmn:incoming>F_14</bpmn:incoming>
+      <bpmn:outgoing>F_15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_destinatarios" name="¿Hay destinatarios?">
+      <bpmn:incoming>F_15</bpmn:incoming>
+      <bpmn:outgoing>F_16</bpmn:outgoing>
+      <bpmn:outgoing>F_17</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ST_sin_destinatarios" name="Informar segmento sin estudiantes">
+      <bpmn:incoming>F_17</bpmn:incoming>
+      <bpmn:outgoing>F_18</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_sin_destinatarios" name="Aviso no registrado">
+      <bpmn:incoming>F_18</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ST_registrar" name="Registrar aviso, destinatarios y lotes">
+      <bpmn:incoming>F_16</bpmn:incoming>
+      <bpmn:outgoing>F_19</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ST_encolar" name="Encolar los lotes en Cloud Tasks">
+      <bpmn:incoming>F_19</bpmn:incoming>
+      <bpmn:outgoing>F_20</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sendTask id="SND_lote" name="Enviar el lote por Telegram Bot API">
+      <bpmn:incoming>F_20</bpmn:incoming>
+      <bpmn:incoming>F_23</bpmn:incoming>
+      <bpmn:outgoing>F_21</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:exclusiveGateway id="GW_limite" name="¿Telegram limitó el envío?">
+      <bpmn:incoming>F_21</bpmn:incoming>
+      <bpmn:outgoing>F_22</bpmn:outgoing>
+      <bpmn:outgoing>F_24</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ST_reintentar" name="Reintentar el lote sin duplicar entregas">
+      <bpmn:incoming>F_22</bpmn:incoming>
+      <bpmn:outgoing>F_23</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ST_resultado" name="Registrar resultado por destinatario">
+      <bpmn:incoming>F_24</bpmn:incoming>
+      <bpmn:outgoing>F_25</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ST_lectura" name="Registrar lectura y actualizar contadores">
+      <bpmn:incoming>F_31</bpmn:incoming>
+      <bpmn:outgoing>F_32</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ST_boton" name="Deshabilitar el botón de lectura">
+      <bpmn:incoming>F_32</bpmn:incoming>
+      <bpmn:outgoing>F_33</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:receiveTask id="RCV_instruccion" name="Recibe instrucción">
+      <bpmn:incoming>F_25</bpmn:incoming>
+      <bpmn:outgoing>F_26</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:sendTask id="SND_entrega" name="Entregar aviso con «Confirmar lectura»">
+      <bpmn:incoming>F_26</bpmn:incoming>
+      <bpmn:outgoing>F_27</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="SND_confirmacion" name="Enviar confirmación">
+      <bpmn:incoming>F_30</bpmn:incoming>
+      <bpmn:outgoing>F_31</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:receiveTask id="RCV_notificacion" name="Recibir notificación">
+      <bpmn:incoming>F_27</bpmn:incoming>
+      <bpmn:outgoing>F_28</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:userTask id="UT_leer" name="Leer aviso">
+      <bpmn:incoming>F_28</bpmn:incoming>
+      <bpmn:outgoing>F_29</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="UT_confirmar" name="Confirmar lectura">
+      <bpmn:incoming>F_29</bpmn:incoming>
+      <bpmn:outgoing>F_30</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="F_1" sourceRef="Start_1" targetRef="UT_redactar" />
+    <bpmn:sequenceFlow id="F_2" sourceRef="UT_redactar" targetRef="UT_segmento" />
+    <bpmn:sequenceFlow id="F_3" sourceRef="UT_segmento" targetRef="GW_division" />
+    <bpmn:sequenceFlow id="F_4" sourceRef="GW_division" targetRef="UT_todos" />
+    <bpmn:sequenceFlow id="F_5" sourceRef="GW_division" targetRef="UT_carrera" />
+    <bpmn:sequenceFlow id="F_6" sourceRef="GW_division" targetRef="UT_semestre" />
+    <bpmn:sequenceFlow id="F_7" sourceRef="GW_division" targetRef="UT_grupo" />
+    <bpmn:sequenceFlow id="F_8" sourceRef="UT_todos" targetRef="GW_union" />
+    <bpmn:sequenceFlow id="F_9" sourceRef="UT_carrera" targetRef="GW_union" />
+    <bpmn:sequenceFlow id="F_10" sourceRef="UT_semestre" targetRef="GW_union" />
+    <bpmn:sequenceFlow id="F_11" sourceRef="UT_grupo" targetRef="GW_union" />
+    <bpmn:sequenceFlow id="F_12" sourceRef="GW_union" targetRef="UT_enviar" />
+    <bpmn:sequenceFlow id="F_13" sourceRef="UT_enviar" targetRef="ST_verificar" />
+    <bpmn:sequenceFlow id="F_14" sourceRef="ST_verificar" targetRef="ST_consultar" />
+    <bpmn:sequenceFlow id="F_15" sourceRef="ST_consultar" targetRef="GW_destinatarios" />
+    <bpmn:sequenceFlow id="F_16" name="Sí" sourceRef="GW_destinatarios" targetRef="ST_registrar" />
+    <bpmn:sequenceFlow id="F_17" name="No" sourceRef="GW_destinatarios" targetRef="ST_sin_destinatarios" />
+    <bpmn:sequenceFlow id="F_18" sourceRef="ST_sin_destinatarios" targetRef="End_sin_destinatarios" />
+    <bpmn:sequenceFlow id="F_19" sourceRef="ST_registrar" targetRef="ST_encolar" />
+    <bpmn:sequenceFlow id="F_20" sourceRef="ST_encolar" targetRef="SND_lote" />
+    <bpmn:sequenceFlow id="F_21" sourceRef="SND_lote" targetRef="GW_limite" />
+    <bpmn:sequenceFlow id="F_22" name="Sí" sourceRef="GW_limite" targetRef="ST_reintentar" />
+    <bpmn:sequenceFlow id="F_23" sourceRef="ST_reintentar" targetRef="SND_lote" />
+    <bpmn:sequenceFlow id="F_24" name="No" sourceRef="GW_limite" targetRef="ST_resultado" />
+    <bpmn:sequenceFlow id="F_25" sourceRef="ST_resultado" targetRef="RCV_instruccion" />
+    <bpmn:sequenceFlow id="F_26" sourceRef="RCV_instruccion" targetRef="SND_entrega" />
+    <bpmn:sequenceFlow id="F_27" sourceRef="SND_entrega" targetRef="RCV_notificacion" />
+    <bpmn:sequenceFlow id="F_28" sourceRef="RCV_notificacion" targetRef="UT_leer" />
+    <bpmn:sequenceFlow id="F_29" sourceRef="UT_leer" targetRef="UT_confirmar" />
+    <bpmn:sequenceFlow id="F_30" sourceRef="UT_confirmar" targetRef="SND_confirmacion" />
+    <bpmn:sequenceFlow id="F_31" sourceRef="SND_confirmacion" targetRef="ST_lectura" />
+    <bpmn:sequenceFlow id="F_32" sourceRef="ST_lectura" targetRef="ST_boton" />
+    <bpmn:sequenceFlow id="F_33" sourceRef="ST_boton" targetRef="UT_seguimiento" />
+    <bpmn:sequenceFlow id="F_34" sourceRef="UT_seguimiento" targetRef="End_1" />
+    <bpmn:textAnnotation id="Nota_1">
+      <bpmn:text>Título (máx. 120 caracteres), mensaje (máx. 4,096, o 1,024 con imagen), imagen opcional y, si es un evento, su fecha y hora opcional.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Asoc_Nota_1" sourceRef="Nota_1" targetRef="UT_redactar" />
+    <bpmn:textAnnotation id="Nota_2">
+      <bpmn:text>Lotes de 50 destinatarios. Cloud Tasks procesa hasta 5 lotes a la vez y reintenta cada lote hasta 5 veces.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Asoc_Nota_2" sourceRef="Nota_2" targetRef="ST_encolar" />
+    <bpmn:textAnnotation id="Nota_3">
+      <bpmn:text>Destinatarios, enviados, lecturas confirmadas y errores. El panel se actualiza cada 5 s mientras el envío está en curso.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Asoc_Nota_3" sourceRef="Nota_3" targetRef="UT_seguimiento" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Avisos_di" bpmnElement="Participant_Avisos" isHorizontal="true">
+        <dc:Bounds x="40" y="40" width="2430" height="1180" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Coordinador_di" bpmnElement="Lane_Coordinador" isHorizontal="true">
+        <dc:Bounds x="70" y="40" width="2400" height="380" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Sistema_di" bpmnElement="Lane_Sistema" isHorizontal="true">
+        <dc:Bounds x="70" y="420" width="2400" height="400" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Chatbot_di" bpmnElement="Lane_Chatbot" isHorizontal="true">
+        <dc:Bounds x="70" y="820" width="2400" height="210" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Estudiantes_di" bpmnElement="Lane_Estudiantes" isHorizontal="true">
+        <dc:Bounds x="70" y="1030" width="2400" height="190" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_1_di" bpmnElement="Start_1">
+        <dc:Bounds x="130" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_redactar_di" bpmnElement="UT_redactar">
+        <dc:Bounds x="200" y="195" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_segmento_di" bpmnElement="UT_segmento">
+        <dc:Bounds x="360" y="195" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_division_di" bpmnElement="GW_division" isMarkerVisible="true">
+        <dc:Bounds x="520" y="205" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_todos_di" bpmnElement="UT_todos">
+        <dc:Bounds x="610" y="82" width="120" height="56" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_carrera_di" bpmnElement="UT_carrera">
+        <dc:Bounds x="610" y="162" width="120" height="56" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_semestre_di" bpmnElement="UT_semestre">
+        <dc:Bounds x="610" y="242" width="120" height="56" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_grupo_di" bpmnElement="UT_grupo">
+        <dc:Bounds x="610" y="322" width="120" height="56" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_union_di" bpmnElement="GW_union" isMarkerVisible="true">
+        <dc:Bounds x="770" y="205" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_enviar_di" bpmnElement="UT_enviar">
+        <dc:Bounds x="860" y="195" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_seguimiento_di" bpmnElement="UT_seguimiento">
+        <dc:Bounds x="2230" y="195" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_1_di" bpmnElement="End_1">
+        <dc:Bounds x="2400" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_verificar_di" bpmnElement="ST_verificar">
+        <dc:Bounds x="610" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_consultar_di" bpmnElement="ST_consultar">
+        <dc:Bounds x="770" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_destinatarios_di" bpmnElement="GW_destinatarios" isMarkerVisible="true">
+        <dc:Bounds x="930" y="595" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="905" y="562" width="100" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_sin_destinatarios_di" bpmnElement="ST_sin_destinatarios">
+        <dc:Bounds x="895" y="705" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_sin_destinatarios_di" bpmnElement="End_sin_destinatarios">
+        <dc:Bounds x="1060" y="722" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1038" y="762" width="80" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_registrar_di" bpmnElement="ST_registrar">
+        <dc:Bounds x="1020" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_encolar_di" bpmnElement="ST_encolar">
+        <dc:Bounds x="1180" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SND_lote_di" bpmnElement="SND_lote">
+        <dc:Bounds x="1340" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_limite_di" bpmnElement="GW_limite" isMarkerVisible="true">
+        <dc:Bounds x="1500" y="595" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1475" y="650" width="100" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_reintentar_di" bpmnElement="ST_reintentar">
+        <dc:Bounds x="1465" y="465" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_resultado_di" bpmnElement="ST_resultado">
+        <dc:Bounds x="1590" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_lectura_di" bpmnElement="ST_lectura">
+        <dc:Bounds x="2070" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ST_boton_di" bpmnElement="ST_boton">
+        <dc:Bounds x="2230" y="585" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="RCV_instruccion_di" bpmnElement="RCV_instruccion">
+        <dc:Bounds x="1590" y="890" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SND_entrega_di" bpmnElement="SND_entrega">
+        <dc:Bounds x="1750" y="890" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SND_confirmacion_di" bpmnElement="SND_confirmacion">
+        <dc:Bounds x="2070" y="890" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="RCV_notificacion_di" bpmnElement="RCV_notificacion">
+        <dc:Bounds x="1750" y="1090" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_leer_di" bpmnElement="UT_leer">
+        <dc:Bounds x="1910" y="1090" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UT_confirmar_di" bpmnElement="UT_confirmar">
+        <dc:Bounds x="2070" y="1090" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Nota_1_di" bpmnElement="Nota_1">
+        <dc:Bounds x="150" y="55" width="240" height="95" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Nota_2_di" bpmnElement="Nota_2">
+        <dc:Bounds x="1160" y="700" width="260" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Nota_3_di" bpmnElement="Nota_3">
+        <dc:Bounds x="1940" y="70" width="250" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="F_1_di" bpmnElement="F_1">
+        <di:waypoint x="166" y="230" />
+        <di:waypoint x="200" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_2_di" bpmnElement="F_2">
+        <di:waypoint x="320" y="230" />
+        <di:waypoint x="360" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_3_di" bpmnElement="F_3">
+        <di:waypoint x="480" y="230" />
+        <di:waypoint x="520" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_4_di" bpmnElement="F_4">
+        <di:waypoint x="545" y="205" />
+        <di:waypoint x="545" y="110" />
+        <di:waypoint x="610" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_5_di" bpmnElement="F_5">
+        <di:waypoint x="545" y="205" />
+        <di:waypoint x="545" y="190" />
+        <di:waypoint x="610" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_6_di" bpmnElement="F_6">
+        <di:waypoint x="545" y="255" />
+        <di:waypoint x="545" y="270" />
+        <di:waypoint x="610" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_7_di" bpmnElement="F_7">
+        <di:waypoint x="545" y="255" />
+        <di:waypoint x="545" y="350" />
+        <di:waypoint x="610" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_8_di" bpmnElement="F_8">
+        <di:waypoint x="730" y="110" />
+        <di:waypoint x="795" y="110" />
+        <di:waypoint x="795" y="205" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_9_di" bpmnElement="F_9">
+        <di:waypoint x="730" y="190" />
+        <di:waypoint x="795" y="190" />
+        <di:waypoint x="795" y="205" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_10_di" bpmnElement="F_10">
+        <di:waypoint x="730" y="270" />
+        <di:waypoint x="795" y="270" />
+        <di:waypoint x="795" y="255" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_11_di" bpmnElement="F_11">
+        <di:waypoint x="730" y="350" />
+        <di:waypoint x="795" y="350" />
+        <di:waypoint x="795" y="255" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_12_di" bpmnElement="F_12">
+        <di:waypoint x="820" y="230" />
+        <di:waypoint x="860" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_13_di" bpmnElement="F_13">
+        <di:waypoint x="920" y="265" />
+        <di:waypoint x="920" y="450" />
+        <di:waypoint x="670" y="450" />
+        <di:waypoint x="670" y="585" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_14_di" bpmnElement="F_14">
+        <di:waypoint x="730" y="620" />
+        <di:waypoint x="770" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_15_di" bpmnElement="F_15">
+        <di:waypoint x="890" y="620" />
+        <di:waypoint x="930" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_16_di" bpmnElement="F_16">
+        <di:waypoint x="980" y="620" />
+        <di:waypoint x="1020" y="620" />
+        <bpmndi:BPMNLabel><dc:Bounds x="985" y="600" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_17_di" bpmnElement="F_17">
+        <di:waypoint x="955" y="645" />
+        <di:waypoint x="955" y="705" />
+        <bpmndi:BPMNLabel><dc:Bounds x="962" y="660" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_18_di" bpmnElement="F_18">
+        <di:waypoint x="1015" y="740" />
+        <di:waypoint x="1060" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_19_di" bpmnElement="F_19">
+        <di:waypoint x="1140" y="620" />
+        <di:waypoint x="1180" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_20_di" bpmnElement="F_20">
+        <di:waypoint x="1300" y="620" />
+        <di:waypoint x="1340" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_21_di" bpmnElement="F_21">
+        <di:waypoint x="1460" y="620" />
+        <di:waypoint x="1500" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_22_di" bpmnElement="F_22">
+        <di:waypoint x="1525" y="595" />
+        <di:waypoint x="1525" y="535" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1531" y="545" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_23_di" bpmnElement="F_23">
+        <di:waypoint x="1465" y="500" />
+        <di:waypoint x="1400" y="500" />
+        <di:waypoint x="1400" y="585" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_24_di" bpmnElement="F_24">
+        <di:waypoint x="1550" y="620" />
+        <di:waypoint x="1590" y="620" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1555" y="600" width="22" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_25_di" bpmnElement="F_25">
+        <di:waypoint x="1650" y="655" />
+        <di:waypoint x="1650" y="890" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_26_di" bpmnElement="F_26">
+        <di:waypoint x="1710" y="925" />
+        <di:waypoint x="1750" y="925" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_27_di" bpmnElement="F_27">
+        <di:waypoint x="1810" y="960" />
+        <di:waypoint x="1810" y="1090" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_28_di" bpmnElement="F_28">
+        <di:waypoint x="1870" y="1125" />
+        <di:waypoint x="1910" y="1125" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_29_di" bpmnElement="F_29">
+        <di:waypoint x="2030" y="1125" />
+        <di:waypoint x="2070" y="1125" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_30_di" bpmnElement="F_30">
+        <di:waypoint x="2130" y="1090" />
+        <di:waypoint x="2130" y="960" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_31_di" bpmnElement="F_31">
+        <di:waypoint x="2130" y="890" />
+        <di:waypoint x="2130" y="655" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_32_di" bpmnElement="F_32">
+        <di:waypoint x="2190" y="620" />
+        <di:waypoint x="2230" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_33_di" bpmnElement="F_33">
+        <di:waypoint x="2290" y="585" />
+        <di:waypoint x="2290" y="265" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F_34_di" bpmnElement="F_34">
+        <di:waypoint x="2350" y="230" />
+        <di:waypoint x="2400" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Asoc_Nota_1_di" bpmnElement="Asoc_Nota_1">
+        <di:waypoint x="265" y="150" />
+        <di:waypoint x="260" y="195" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Asoc_Nota_2_di" bpmnElement="Asoc_Nota_2">
+        <di:waypoint x="1240" y="700" />
+        <di:waypoint x="1240" y="655" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Asoc_Nota_3_di" bpmnElement="Asoc_Nota_3">
+        <di:waypoint x="2190" y="115" />
+        <di:waypoint x="2240" y="195" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
