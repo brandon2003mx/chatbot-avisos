@@ -1,73 +1,110 @@
-# Chatbot de Avisos ITTG
+# Canal de Difusión Inteligente vía Chatbot de Telegram — ITTG
 
-Sistema de difusión institucional para el Instituto Tecnológico de Tuxtla Gutiérrez. Los coordinadores crean avisos segmentados desde un panel web y los estudiantes se registran, reciben avisos y confirman su lectura mediante Telegram.
+Sistema de difusión de avisos institucionales para el Instituto Tecnológico de Tuxtla Gutiérrez. El personal crea avisos segmentados desde un panel web, y los estudiantes se registran, reciben los avisos y confirman su lectura mediante un bot de Telegram.
+
+Proyecto de Residencia Profesional 2601-13 (agosto-diciembre 2026).
 
 ## Funcionalidades
 
-- Inicio de sesión de coordinadores con Firebase Authentication.
-- Panel con métricas de avisos, estudiantes, destinatarios y lecturas confirmadas.
-- Creación de avisos por carrera, semestre, grupo o para todos los estudiantes.
-- Envío asíncrono por lotes con idempotencia y control de reintentos.
-- Administración de avisos: consulta, corrección mediante reenvío y eliminación en cascada.
-- Registro y actualización de datos académicos del estudiante desde el bot de Telegram.
-- Botón **Confirmar lectura** en cada aviso de Telegram. La confirmación se almacena para el destinatario del aviso y actualiza el panel administrativo.
+**Panel web (coordinador y administrador)**
+
+- Inicio de sesión con Firebase Authentication y acceso según el rol (`administrador` o `coordinador`).
+- Redacción de avisos con título, mensaje, imagen opcional y, si anuncian un evento, su fecha y hora.
+- Segmentación por todos los estudiantes, carrera, semestre o grupo.
+- Gestión de avisos: seguimiento del envío (destinatarios, enviados, lecturas confirmadas y errores), filtros, corrección mediante un aviso nuevo y eliminación.
+- Panel de inicio con indicadores y gráficas.
+- Solo el administrador: catálogo de carreras (semestres y grupos) y consulta de estudiantes registrados.
+
+**Bot de Telegram (estudiante)**
+
+- Registro con verificación del correo institucional mediante un código de seis dígitos.
+- Recepción de avisos (como foto si llevan imagen) con el botón **Confirmar lectura**.
+- Comandos `/info`, `/registro`, `/pendientes_lectura` y `/eventos`.
+
+**Envío**
+
+- Envío asíncrono en lotes de 50 destinatarios mediante Cloud Tasks, con reintentos automáticos, sin duplicar entregas y con control de idempotencia.
+
+Telegram no avisa a los bots cuándo una persona abre un mensaje; por eso una lectura solo se registra cuando el estudiante pulsa **Confirmar lectura**.
 
 ## Arquitectura
 
-| Componente | Tecnología | Responsabilidad |
-| --- | --- | --- |
-| `frontend/` | HTML, CSS y JavaScript | Panel web para coordinadores. |
-| `functions/` | Node.js y Cloud Functions for Firebase | API, webhooks de Telegram y procesamiento de avisos. |
-| Firebase Authentication | Firebase | Autenticación de coordinadores. |
-| Cloud Firestore | Firebase | Avisos, destinatarios, estudiantes y estructura académica. |
-| Telegram Bot API | Telegram | Registro de estudiantes, entrega de avisos y confirmaciones. |
+| Componente | Responsabilidad |
+| --- | --- |
+| Firebase Hosting | Publica el panel (`frontend/`) y redirige `/api/**` a la función `api`. |
+| Cloud Functions (Node.js 24, 2.ª generación) | `api` (panel), `telegramWebhook` (bot), `encolarLoteAviso` y `procesarLoteAviso` (envío por lotes). |
+| Cloud Firestore | Usuarios del panel, catálogo académico, estudiantes, registros en curso y avisos con sus destinatarios y lotes. |
+| Cloud Storage for Firebase | Imagen de cada aviso. |
+| Google Cloud Tasks | Cola de envío: 5 lotes a la vez y hasta 5 intentos por lote. |
+| Firebase Authentication | Inicio de sesión del personal del panel. |
+| Secret Manager | Token del bot, secreto del webhook y clave de Resend. |
+| Telegram Bot API | Mensajes y botones del bot; los eventos llegan por webhook. |
+| Resend | Envío del código de verificación al correo institucional. |
 
-No hay una vista web de estudiante. El flujo de los estudiantes se realiza desde Telegram.
+Las reglas de Firestore y de Storage niegan todo acceso directo desde los clientes: solo las Cloud Functions leen y escriben los datos.
+
+## Estructura del proyecto
+
+```text
+frontend/                 Panel web (HTML, CSS y JavaScript sin compilación)
+functions/
+  index.js                Definición de las cuatro Cloud Functions y rutas de la API
+  src/config/             Inicialización de Firebase (con protección para el entorno local)
+  src/services/           Lógica: avisos, envío por lotes, imágenes, registro del bot, catálogo, etc.
+  src/utils/              Fechas en la zona horaria de Tuxtla
+  scripts/                Utilidades locales y pruebas de carga e imágenes
+firebase.json             Configuración de Hosting, Functions, Firestore, Storage y emuladores
+firestore.rules           Reglas de Firestore (acceso directo denegado)
+firestore.indexes.json    Índices de Firestore
+storage.rules             Reglas de Storage (acceso directo denegado)
+```
 
 ## Requisitos
 
 - Node.js 24.
 - Firebase CLI.
-- Java 21 o posterior para el emulador de Firestore.
-- Un bot de Telegram y su token.
+- Java 21 o posterior (lo requieren los emuladores de Firestore y Storage).
+- Un bot de Telegram **de prueba** para desarrollo (nunca el bot de producción).
 
-## Configuración
+## Configuración local
 
 1. Instala las dependencias de Functions:
 
-	```powershell
+	```bash
 	cd functions
 	npm install
 	```
 
-2. Crea `functions/.env` a partir de `functions/.env.example` y define los secretos requeridos:
+2. Crea `functions/.secret.local` con los valores de tu bot de prueba:
 
 	```env
-	TELEGRAM_BOT_TOKEN=tu_token_de_telegram
-	TELEGRAM_WEBHOOK_SECRET=un_secreto_aleatorio
+	TELEGRAM_BOT_TOKEN=token_del_bot_de_prueba
+	TELEGRAM_WEBHOOK_SECRET=cualquier-valor-de-prueba
+	RESEND_API_KEY=clave_de_resend
 	```
 
-	No incluyas este archivo en Git ni publiques el token.
+	Ese archivo solo lo leen los emuladores y los scripts locales; nunca se despliega ni se sube a Git. `functions/.env` debe quedarse **vacío**: lo que contenga se despliega como variable de entorno y choca con los secretos de producción (ver `functions/.env.example`).
 
-3. Inicia el entorno local desde la raíz del proyecto:
+3. Inicia los emuladores desde la raíz del proyecto (o `npm run serve` desde `functions/`):
 
-	```powershell
+	```bash
 	firebase emulators:start --only auth,firestore,functions,hosting,storage
 	```
 
-	El emulador de Storage guarda las imágenes de los avisos. Sin él, crear un aviso con imagen falla a propósito, para no escribir en el bucket de producción.
+	Por seguridad, el código local se niega a usar Firestore o Storage de producción: si falta el emulador correspondiente, la ejecución se detiene.
 
-4. Abre el panel mediante Firebase Hosting:
+4. Abre el panel en `http://127.0.0.1:5000/login.html`. No uses Live Server: el rewrite de `/api/**` solo funciona desde Firebase Hosting.
 
-	```text
-	http://127.0.0.1:5000/login.html
+5. Crea un usuario del panel: regístralo en la pestaña Authentication del Emulator UI (`http://127.0.0.1:4000`), copia su UID y asígnale un rol:
+
+	```bash
+	cd functions
+	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+	node scripts/crear-administrador.js <UID>     # o crear-coordinador.js
+	node scripts/seed-academic-data.js            # carga ISC con 9 semestres y grupos A, B y C
 	```
 
-	No uses Live Server para probar el sistema: el rewrite de `/api/**` hacia Functions solo está disponible desde Firebase Hosting.
-
-## Desarrollo local
-
-Firebase Hosting sirve la carpeta `frontend/` y redirige las solicitudes `/api/**` a la función `api`.
+6. Para probar el bot con tu bot de prueba (por sondeo, sin webhook): `npm run telegram:dev` desde `functions/`.
 
 | Servicio | URL o puerto local |
 | --- | --- |
@@ -75,40 +112,52 @@ Firebase Hosting sirve la carpeta `frontend/` y redirige las solicitudes `/api/*
 | Emulator UI | `http://127.0.0.1:4000` |
 | Authentication | `127.0.0.1:9099` |
 | Firestore | `127.0.0.1:8080` |
+| Storage | `127.0.0.1:9199` |
 | Functions | `127.0.0.1:5001` |
 
-Para ejecutar el bot por sondeo durante el desarrollo local:
-
-```powershell
-cd functions
-npm run telegram:dev
-```
-
-## Flujo de Avisos
-
-1. El coordinador inicia sesión y redacta un aviso.
-2. La API valida los datos y crea el aviso junto con sus destinatarios.
-3. Functions procesa los destinatarios en lotes y entrega los mensajes por Telegram.
-4. El mensaje incluye el botón **Confirmar lectura**.
-5. Al pulsarlo, el bot marca el destinatario como leído y el panel refleja las métricas actualizadas.
-
-Telegram no emite eventos cuando una persona solo abre un mensaje. Por esa razón, las lecturas se contabilizan únicamente cuando el estudiante pulsa el botón de confirmación.
-
-## Scripts Disponibles
+## Pruebas
 
 Desde `functions/`:
 
-```powershell
+```bash
+# Análisis estático (también corre antes de cada despliegue)
 npm run lint
-npm run telegram:dev
-npm run serve
-npm run deploy
+
+# Carga y tolerancia a fallas: 5,000 estudiantes, fallas de Telegram,
+# estudiantes que bloquearon el bot e interrupciones de Firestore
+firebase emulators:exec --only firestore "node scripts/prueba-carga.js"
+
+# Avisos con imagen: guardado en Storage, envío como foto, validaciones,
+# corrección, reenvío desde el bot y eliminación
+firebase emulators:exec --only firestore,storage "node scripts/prueba-imagen.js"
 ```
+
+Ambas pruebas usan un Telegram simulado: nunca envían mensajes reales.
 
 ## Despliegue
 
-Antes del despliegue, configura los secretos de Firebase para producción y verifica que el webhook de Telegram apunte a la función correspondiente. Luego ejecuta:
+1. En la consola de Firebase, el proyecto debe tener el plan Blaze y Cloud Storage activado.
+2. Configura los secretos de producción:
 
-```powershell
-firebase deploy
-```
+	```bash
+	firebase functions:secrets:set TELEGRAM_BOT_TOKEN
+	firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET
+	firebase functions:secrets:set RESEND_API_KEY
+	```
+
+3. Despliega desde la raíz del proyecto:
+
+	```bash
+	firebase deploy
+	```
+
+4. Registra el webhook del bot con la URL de la función `telegramWebhook` que muestra el despliegue y el mismo secreto:
+
+	```bash
+	curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+	  -d "url=<URL de telegramWebhook>" \
+	  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+	```
+
+5. Configura el menú de comandos del bot: `npm run telegram:comandos` desde `functions/`.
+6. Da de alta al personal del panel: crea su cuenta en Firebase Authentication y, en Firestore, el documento `usuarios/<UID>` con los campos `rol` (`administrador` o `coordinador`) y `activo: true`.

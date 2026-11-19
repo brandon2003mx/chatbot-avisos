@@ -157,6 +157,15 @@ const imagenInput = document.getElementById('imagen');
 const imagenVistaPrevia = document.getElementById('imagenVistaPrevia');
 const imagenPreviewImg = document.getElementById('imagenPreviewImg');
 const quitarImagenButton = document.getElementById('quitarImagenButton');
+const imagenBoton = document.getElementById('imagenBoton');
+const imagenNombre = document.getElementById('imagenNombre');
+
+// Texto junto al botón propio del selector (el del navegador va oculto).
+function mostrarNombreImagen(nombre) {
+  imagenNombre.textContent = nombre || 'Ningún archivo seleccionado';
+  imagenNombre.title = nombre || '';
+  imagenBoton.textContent = nombre ? 'Cambiar imagen' : 'Elegir imagen';
+}
 
 // Telegram reduce las fotos a 1280 px por lado: subir más resolución
 // solo hace más lento el envío. Se convierte a JPEG, que es lo que
@@ -194,6 +203,7 @@ function quitarImagen() {
   urlVistaPrevia = null;
   imagenPreviewImg.removeAttribute('src');
   imagenVistaPrevia.hidden = true;
+  mostrarNombreImagen(null);
   actualizarContadorCaracteres();
 }
 
@@ -247,6 +257,7 @@ imagenInput.addEventListener('change', async () => {
     const dataUrl = await prepararImagen(archivo);
     imagenNueva = dataUrl.split(',')[1];
     conservarImagenOriginal = false;
+    mostrarNombreImagen(archivo.name);
     mostrarVistaPrevia(dataUrl);
   } catch (error) {
     showMessage(error.message);
@@ -261,6 +272,7 @@ quitarImagenButton.addEventListener('click', quitarImagen);
 // porque la imagen no es pública.
 async function cargarImagenOriginal(avisoId) {
   conservarImagenOriginal = true;
+  mostrarNombreImagen('Imagen del aviso original');
   try {
     const headers = {};
     if (firebase.auth().currentUser) {

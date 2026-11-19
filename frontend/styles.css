@@ -92,3 +92,12 @@ main.main-narrow { max-width: 1048px; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* Selector de imagen: el botón nativo del navegador muestra su texto en
+   el idioma del sistema ("Choose File"); se oculta y se usa un botón
+   propio en español. El input sigue siendo el que recibe el foco. */
+.selector-archivo { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.form-grid .selector-archivo-input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.form-grid .selector-archivo-boton { display: inline-flex; align-items: center; margin: 0; font: 700 13px 'DM Sans', sans-serif; color: var(--ink); cursor: pointer; }
+.selector-archivo-input:focus-visible + .selector-archivo-boton { outline: 3px solid #bfdbfe; outline-offset: 2px; border-color: #2563eb; }
+.selector-archivo-nombre { min-width: 0; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
